@@ -1,5 +1,21 @@
 # Deploying Bench Street
 
+## ✅ Live deployment (2026-06-15)
+- **App (Vercel):** https://client-xi-orcin.vercel.app
+- **API (Railway):** https://bench-street-api-production.up.railway.app  (health: `/api/health`)
+- **Repo:** https://github.com/Foxxed909/bench-street (private)
+- Frontend built with `VITE_API_URL` → the Railway API; backend `CLIENT_ORIGIN=*`,
+  `NODE_ENV=production`, generated `JWT_SECRET`.
+- Redeploy frontend: `cd client && vercel --prod`. Redeploy backend: `cd server && railway up`
+  (or it redeploys on Railway when you change variables).
+- Notes: the Vercel project is named `client` (from the folder); rename in the dashboard if you
+  want a prettier URL. Railway runs on trial credits — if they run out the API stops; the
+  Render blueprint below is the free fallback.
+
+---
+
+
+
 Two pieces, two hosts:
 
 | Piece | What it is | Host |
