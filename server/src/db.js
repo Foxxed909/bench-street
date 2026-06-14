@@ -1,0 +1,180 @@
+import Database from 'better-sqlite3'
+import path from 'node:path'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const dataDir = path.join(__dirname, '..', 'data')
+fs.mkdirSync(dataDir, { recursive: true })
+
+const db = new Database(path.join(dataDir, 'bench-street.db'))
+db.pragma('journal_mode = WAL')
+db.pragma('foreign_keys = ON')
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT UNIQUE NOT NULL,
+    email         TEXT UNIQUE,
+    password_hash TEXT NOT NULL,
+    cash          REAL NOT NULL,
+    created_at    TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS models (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL,
+    name        TEXT NOT NULL,
+    company     TEXT NOT NULL,
+    ticker      TEXT NOT NULL,
+    open_source INTEGER NOT NULL DEFAULT 0,
+    color       TEXT,
+    fundamental REAL NOT NULL DEFAULT 0,
+    price       REAL NOT NULL DEFAULT 0,
+    prev_close  REAL NOT NULL DEFAULT 0,
+    volatility  REAL NOT NULL DEFAULT 0.008,
+    created_at  TEXT NOT NULL
+  );
+
+  -- A snapshot of raw signals per model. Latest row (by captured_at) is current.
+  CREATE TABLE IF NOT EXISTS model_signals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id    INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    elo         REAL,
+    usage       REAL,   -- OpenRouter-style usage / market share (%)
+    bench       REAL,   -- composite benchmark score 0..100
+    downloads   REAL,   -- HuggingFace downloads (open models)
+    api_price   REAL,   -- blended $/Mtok (lower is "cheaper")
+    captured_at TEXT NOT NULL
+  );
+
+  -- 1-minute OHLC candles for charting. t = epoch seconds floored to the minute.
+  CREATE TABLE IF NOT EXISTS price_candles (
+    model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    t        INTEGER NOT NULL,
+    open     REAL NOT NULL,
+    high     REAL NOT NULL,
+    low      REAL NOT NULL,
+    close    REAL NOT NULL,
+    PRIMARY KEY (model_id, t)
+  );
+
+  CREATE TABLE IF NOT EXISTS holdings (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    model_id  INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    shares    REAL NOT NULL DEFAULT 0,
+    avg_cost  REAL NOT NULL DEFAULT 0,
+    UNIQUE (user_id, model_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS trades (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    model_id   INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    side       TEXT NOT NULL,   -- 'buy' | 'sell'
+    shares     REAL NOT NULL,
+    price      REAL NOT NULL,
+    total      REAL NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  -- Prediction markets (parimutuel pools).
+  CREATE TABLE IF NOT EXISTS markets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug       TEXT UNIQUE NOT NULL,
+    question   TEXT NOT NULL,
+    category   TEXT,
+    status     TEXT NOT NULL DEFAULT 'open',   -- 'open' | 'closed' | 'resolved'
+    resolution TEXT NOT NULL DEFAULT 'admin',  -- 'auto' | 'admin'
+    closes_at  TEXT,
+    resolved_outcome_id INTEGER,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS market_outcomes (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+    label     TEXT NOT NULL,
+    pool      REAL NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS market_positions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    market_id  INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+    outcome_id INTEGER NOT NULL REFERENCES market_outcomes(id) ON DELETE CASCADE,
+    stake      REAL NOT NULL,
+    settled    INTEGER NOT NULL DEFAULT 0,
+    payout     REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  -- Head-to-head battles (Arena): two models, parimutuel sides, Elo-settled.
+  CREATE TABLE IF NOT EXISTS battles (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_a_id  INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    model_b_id  INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    category    TEXT,
+    status      TEXT NOT NULL DEFAULT 'open',   -- 'open' | 'settled'
+    pool_a      REAL NOT NULL DEFAULT 0,
+    pool_b      REAL NOT NULL DEFAULT 0,
+    closes_at   TEXT,
+    winner_id   INTEGER,
+    win_prob_a  REAL,
+    created_at  TEXT NOT NULL,
+    settled_at  TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS battle_bets (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    battle_id     INTEGER NOT NULL REFERENCES battles(id) ON DELETE CASCADE,
+    side_model_id INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    stake         REAL NOT NULL,
+    settled       INTEGER NOT NULL DEFAULT 0,
+    payout        REAL NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL
+  );
+
+  -- Community votes: each user can vote once per model (toggleable). Votes drive price.
+  CREATE TABLE IF NOT EXISTS votes (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    model_id   INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, model_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_signals_model ON model_signals(model_id, captured_at);
+  CREATE INDEX IF NOT EXISTS idx_candles_model ON price_candles(model_id, t);
+  CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_battlebets_user ON battle_bets(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_votes_model ON votes(model_id);
+`)
+
+// --- Lightweight migrations (additive columns on existing DBs) --------------
+function ensureColumn(table, column, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name)
+  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+}
+// Demand pressure (legacy; retired in favour of votes — kept dormant to avoid a drop).
+ensureColumn('models', 'demand', 'demand REAL NOT NULL DEFAULT 0')
+// Denormalized count of community votes — the live price driver.
+ensureColumn('models', 'vote_count', 'vote_count INTEGER NOT NULL DEFAULT 0')
+// Live signal-feed mapping (OpenRouter / HuggingFace ids).
+ensureColumn('models', 'openrouter_id', 'openrouter_id TEXT')
+ensureColumn('models', 'hf_id', 'hf_id TEXT')
+// Admin flag for resolving markets / refreshing signals.
+ensureColumn('users', 'is_admin', 'is_admin INTEGER NOT NULL DEFAULT 0')
+// Polymarket-style resolution criteria text on each market.
+ensureColumn('markets', 'rules', 'rules TEXT')
+// Machine-readable auto-resolution spec (JSON) for feed-settled markets.
+ensureColumn('markets', 'resolver', 'resolver TEXT')
+// Ensure at least one admin exists — promote the earliest-registered user.
+{
+  const hasAdmin = db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_admin = 1').get().n
+  const first = db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get()
+  if (!hasAdmin && first) db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(first.id)
+}
+
+export default db

@@ -1,0 +1,14 @@
+{
+  "name": "bench-street",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bench Street — a play-money exchange where you trade real AI models like stocks.",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "seed": "npm run seed --prefix server",
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

@@ -1,0 +1,114 @@
+import { Router } from 'express'
+import db from '../db.js'
+import { requireAuth, requireAdmin } from '../auth.js'
+import { eloWinProb, settleBattle } from '../battles.js'
+
+const router = Router()
+
+const modelStmt = db.prepare(`
+  SELECT m.id, m.slug, m.name, m.ticker, m.color, m.price,
+         (SELECT elo FROM model_signals WHERE model_id = m.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS elo
+    FROM models m WHERE m.id = ?
+`)
+
+function shape(battle) {
+  const a = modelStmt.get(battle.model_a_id)
+  const b = modelStmt.get(battle.model_b_id)
+  const total = battle.pool_a + battle.pool_b || 1
+  const isOpen = battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
+  return {
+    id: battle.id,
+    category: battle.category,
+    status: battle.status === 'settled' ? 'settled' : isOpen ? 'open' : 'closing',
+    closesAt: battle.closes_at,
+    pool: +total.toFixed(2),
+    winnerId: battle.winner_id,
+    sides: [
+      {
+        key: 'a',
+        ...a,
+        pool: +battle.pool_a.toFixed(2),
+        impliedPct: +((battle.pool_a / total) * 100).toFixed(1),
+        payout: +(total / (battle.pool_a || 1)).toFixed(2),
+        eloProb: +(eloWinProb(a.elo ?? 1200, b.elo ?? 1200) * 100).toFixed(1),
+        won: battle.winner_id === a.id
+      },
+      {
+        key: 'b',
+        ...b,
+        pool: +battle.pool_b.toFixed(2),
+        impliedPct: +((battle.pool_b / total) * 100).toFixed(1),
+        payout: +(total / (battle.pool_b || 1)).toFixed(2),
+        eloProb: +(eloWinProb(b.elo ?? 1200, a.elo ?? 1200) * 100).toFixed(1),
+        won: battle.winner_id === b.id
+      }
+    ]
+  }
+}
+
+router.get('/', (req, res) => {
+  const battles = db
+    .prepare("SELECT * FROM battles ORDER BY (status='settled'), created_at DESC")
+    .all()
+  res.json({ battles: battles.map(shape) })
+})
+
+router.get('/mine', requireAuth, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT bb.id, bb.stake, bb.settled, bb.payout, bb.created_at, bb.side_model_id,
+              b.id AS battle_id, b.status, b.winner_id, b.category,
+              m.ticker AS side_ticker, m.name AS side_name
+         FROM battle_bets bb
+         JOIN battles b ON b.id = bb.battle_id
+         JOIN models m ON m.id = bb.side_model_id
+        WHERE bb.user_id = ?
+        ORDER BY bb.created_at DESC, bb.id DESC`
+    )
+    .all(req.user.id)
+    .map((r) => ({ ...r, won: r.winner_id != null && r.winner_id === r.side_model_id }))
+  res.json({ positions: rows })
+})
+
+router.post('/:id/bet', requireAuth, (req, res) => {
+  const { side, stake } = req.body || {}
+  const amount = Number(stake)
+  if (!(amount > 0)) return res.status(400).json({ error: 'stake must be > 0' })
+  if (side !== 'a' && side !== 'b') return res.status(400).json({ error: "side must be 'a' or 'b'" })
+
+  const battle = db.prepare('SELECT * FROM battles WHERE id = ?').get(req.params.id)
+  if (!battle) return res.status(404).json({ error: 'battle not found' })
+  const open = battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
+  if (!open) return res.status(400).json({ error: 'battle is closed' })
+
+  const sideModelId = side === 'a' ? battle.model_a_id : battle.model_b_id
+  const poolCol = side === 'a' ? 'pool_a' : 'pool_b'
+
+  try {
+    db.transaction(() => {
+      const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
+      if (cash < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+      db.prepare('UPDATE users SET cash = cash - ? WHERE id = ?').run(amount, req.user.id)
+      db.prepare(`UPDATE battles SET ${poolCol} = ${poolCol} + ? WHERE id = ?`).run(amount, battle.id)
+      db.prepare(
+        `INSERT INTO battle_bets (user_id, battle_id, side_model_id, stake, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(req.user.id, battle.id, sideModelId, amount, new Date().toISOString())
+    })()
+  } catch (e) {
+    return res.status(e.code || 400).json({ error: e.message || 'bet failed' })
+  }
+
+  const fresh = db.prepare('SELECT * FROM battles WHERE id = ?').get(battle.id)
+  const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
+  res.json({ ok: true, battle: shape(fresh), cash })
+})
+
+// Admin: force-settle a battle immediately (otherwise the auto-settler handles it).
+router.post('/:id/settle', requireAdmin, (req, res) => {
+  const settled = settleBattle(Number(req.params.id))
+  if (!settled) return res.status(400).json({ error: 'could not settle (already settled?)' })
+  res.json({ ok: true, battle: shape(settled) })
+})
+
+export default router
