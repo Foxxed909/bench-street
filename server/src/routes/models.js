@@ -38,6 +38,9 @@ function decorate(m, myVote = 0) {
     net: likes - dislikes,
     approval: total ? Math.round((likes / total) * 100) : null,
     myVote, // 1 = liked, -1 = disliked, 0 = none
+    status: m.status || 'active',
+    statusNote: m.status_note || null,
+    releasedAt: m.released_at || null,
     liveSignals: !!(m.openrouter_id || m.hf_id),
     change: +change.toFixed(2),
     changePct: +changePct.toFixed(2),
@@ -55,6 +58,7 @@ function decorate(m, myVote = 0) {
 const SELECT = `
   SELECT m.id, m.slug, m.name, m.company, m.ticker, m.open_source, m.color,
          m.price, m.prev_close, m.like_count, m.dislike_count, m.benchmarks,
+         m.status, m.status_note, m.released_at,
          m.openrouter_id, m.hf_id,
          s.elo, s.usage, s.bench, s.downloads, s.api_price
     FROM models m
@@ -122,8 +126,11 @@ function syncTallies(modelId) {
 // Cast a like (+1) or dislike (-1). Re-casting the same stance clears it (toggle);
 // casting the opposite stance switches. One stance per user per model.
 router.post('/:slug/vote', requireAuth, (req, res) => {
-  const m = db.prepare('SELECT id FROM models WHERE slug = ?').get(req.params.slug)
+  const m = db.prepare('SELECT id, status FROM models WHERE slug = ?').get(req.params.slug)
   if (!m) return res.status(404).json({ error: 'model not found' })
+  if (m.status === 'suspended') {
+    return res.status(400).json({ error: 'model access is suspended — voting is disabled' })
+  }
 
   const want = Number(req.body?.value)
   if (want !== 1 && want !== -1) {

@@ -7,7 +7,7 @@ import { num } from '../lib/format.js'
 
 // Like / dislike control. Net (likes − dislikes) drives a model's price.
 // `myVote` is the signed-in user's stance: 1 liked, -1 disliked, 0 none.
-export default function LikeDislike({ slug, likes, dislikes, myVote, onChange, size = 'md' }) {
+export default function LikeDislike({ slug, likes, dislikes, myVote, onChange, size = 'md', disabled = false }) {
   const { user } = useAuth()
   const nav = useNavigate()
   const [busy, setBusy] = useState(false)
@@ -16,6 +16,7 @@ export default function LikeDislike({ slug, likes, dislikes, myVote, onChange, s
   async function cast(value, e) {
     e?.preventDefault()
     e?.stopPropagation()
+    if (disabled) return
     if (!user) return nav('/login')
     if (busy) return
     setBusy(true)
@@ -35,11 +36,11 @@ export default function LikeDislike({ slug, likes, dislikes, myVote, onChange, s
     'inline-flex items-center gap-1 rounded-lg border transition active:scale-95 disabled:opacity-50'
 
   return (
-    <div className="inline-flex items-center gap-1.5">
+    <div className={`inline-flex items-center gap-1.5 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
       <button
         onClick={(e) => cast(1, e)}
-        disabled={busy}
-        title={myVote === 1 ? 'Remove your like' : 'Like'}
+        disabled={busy || disabled}
+        title={disabled ? 'Voting disabled' : myVote === 1 ? 'Remove your like' : 'Like'}
         className={`${base} ${pad} ${
           myVote === 1
             ? 'border-up/50 bg-up/15 text-up'
@@ -51,8 +52,8 @@ export default function LikeDislike({ slug, likes, dislikes, myVote, onChange, s
       </button>
       <button
         onClick={(e) => cast(-1, e)}
-        disabled={busy}
-        title={myVote === -1 ? 'Remove your dislike' : 'Dislike'}
+        disabled={busy || disabled}
+        title={disabled ? 'Voting disabled' : myVote === -1 ? 'Remove your dislike' : 'Dislike'}
         className={`${base} ${pad} ${
           myVote === -1
             ? 'border-down/50 bg-down/15 text-down'

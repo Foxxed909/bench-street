@@ -19,16 +19,19 @@ export const compact = (n) =>
 
 export const upDown = (n) => (n >= 0 ? 'text-up' : 'text-down')
 
-// Reasoning-effort tier suffixes shown as a badge on variant models.
-const TIER_WORDS = ['low', 'medium', 'high', 'xhigh', 'max']
-export function splitTier(name) {
-  if (!name) return { base: name, tier: null }
-  const parts = name.split(' ')
-  const last = parts[parts.length - 1]?.toLowerCase()
-  if (TIER_WORDS.includes(last)) {
-    return { base: parts.slice(0, -1).join(' '), tier: last }
-  }
-  return { base: name, tier: null }
+// A model counts as "new" for ~45 days after its release date.
+const NEW_WINDOW_MS = 45 * 864e5
+export function isNew(releasedAt) {
+  if (!releasedAt) return false
+  return Date.now() - new Date(releasedAt).getTime() < NEW_WINDOW_MS
+}
+
+// Short release-date label, e.g. "Jun 9, 2026".
+export function releaseLabel(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d)) return null
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export function ago(iso) {

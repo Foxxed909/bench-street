@@ -8,17 +8,11 @@ import Sparkline from '../components/Sparkline.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import LikeDislike from '../components/LikeDislike.jsx'
 import MarketStats from '../components/MarketStats.jsx'
-import { pct, upDown, ago, splitTier } from '../lib/format.js'
+import { pct, upDown, ago, isNew } from '../lib/format.js'
 
-const TIER_TONE = {
-  low: 'bg-slate-500/15 text-slate-400',
-  medium: 'bg-sky-500/15 text-sky-300',
-  high: 'bg-up/15 text-up',
-  xhigh: 'bg-accent/15 text-accent',
-  max: 'bg-purple-500/20 text-purple-300'
-}
-
+const ts = (d) => (d ? new Date(d).getTime() || 0 : 0)
 const SORTS = {
+  new: (a, b) => ts(b.releasedAt) - ts(a.releasedAt),
   price: (a, b) => b.livePrice - a.livePrice,
   gainers: (a, b) => b.liveChangePct - a.liveChangePct,
   losers: (a, b) => a.liveChangePct - b.liveChangePct,
@@ -29,7 +23,7 @@ export default function Floor() {
   const [models, setModels] = useState([])
   const [signals, setSignals] = useState(null)
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState('price')
+  const [sort, setSort] = useState('new')
   const [refreshing, setRefreshing] = useState(false)
   const { prices, history, likes, dislikes } = usePrices()
   const { user } = useAuth()
@@ -126,6 +120,7 @@ export default function Floor() {
       <div className="card overflow-hidden">
         <div className="flex items-center gap-1 px-3 py-2.5 border-b border-edge">
           {[
+            ['new', 'Newest'],
             ['price', 'Price'],
             ['gainers', 'Gainers'],
             ['losers', 'Losers'],
@@ -172,12 +167,12 @@ export default function Floor() {
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate font-medium text-white transition group-hover:text-accent">
-                          {splitTier(m.name).base}
+                          {m.name}
                         </span>
-                        {splitTier(m.name).tier && (
-                          <span className={`pill ${TIER_TONE[splitTier(m.name).tier]}`}>
-                            {splitTier(m.name).tier}
-                          </span>
+                        {m.status === 'suspended' ? (
+                          <span className="pill bg-amber-500/15 text-amber-300">suspended</span>
+                        ) : (
+                          isNew(m.releasedAt) && <span className="pill bg-accent/15 text-accent">new</span>
                         )}
                         {m.openSource && <span className="pill bg-up/15 text-up">open</span>}
                         {m.liveSignals && <span className="pill bg-accent/15 text-accent">live</span>}
@@ -203,6 +198,7 @@ export default function Floor() {
                       myVote={m.myVote}
                       onChange={(mv, l, d) => patchVote(m.id, mv, l, d)}
                       size="sm"
+                      disabled={m.status === 'suspended'}
                     />
                   </div>
                 </td>

@@ -9,6 +9,10 @@ import { resolveMarket } from './resolve.js'
 //        → at close, resolves to whichever model has the higher live ELO.
 //   { kind:'open_top' }
 //        → at close, YES if the highest-ELO model in our index is open-weights.
+//   { kind:'bench_top', key:'BridgeBench', candidates:[slugs] }
+//        → at close, resolves to the candidate with the highest benchmark `key`.
+//   { kind:'price_top', candidates:[slugs] }
+//        → at close, resolves to the candidate with the highest share price.
 //
 // Threshold markets can settle EARLY (the moment the condition is true). Lead /
 // open_top markets settle at close (when the deadline passes). Anything it can't
@@ -40,6 +44,47 @@ function decide(market) {
     return null
   }
   const closed = market.closes_at && new Date(market.closes_at) <= new Date()
+
+  // Data-driven bets that settle at close on Bench Street's own model data —
+  // no ELO needed, so they're handled before the live-ELO guard below.
+  if (spec.kind === 'bench_top') {
+    if (!closed || !spec.candidates?.length) return null
+    const ph = spec.candidates.map(() => '?').join(',')
+    const rows = db
+      .prepare(`SELECT name, benchmarks FROM models WHERE slug IN (${ph})`)
+      .all(...spec.candidates)
+    let best = null
+    for (const r of rows) {
+      let score = null
+      try {
+        score = JSON.parse(r.benchmarks)?.[spec.key]
+      } catch {
+        score = null
+      }
+      if (score == null) continue
+      if (!best || score > best.score) best = { name: r.name, score }
+    }
+    if (!best) return null
+    const o = outcomeByLabel(market.id, best.name)
+    return o ? { outcomeId: o.id, note: `${best.name} led ${spec.key} (${best.score})` } : null
+  }
+
+  if (spec.kind === 'price_top') {
+    if (!closed || !spec.candidates?.length) return null
+    const ph = spec.candidates.map(() => '?').join(',')
+    const rows = db
+      .prepare(`SELECT name, price FROM models WHERE slug IN (${ph})`)
+      .all(...spec.candidates)
+    let best = null
+    for (const r of rows) {
+      if (r.price == null) continue
+      if (!best || r.price > best.price) best = { name: r.name, price: r.price }
+    }
+    if (!best || !(best.price > 0)) return null // all $0 → leave for an admin
+    const o = outcomeByLabel(market.id, best.name)
+    return o ? { outcomeId: o.id, note: `${best.name} most valued ($${best.price.toFixed(0)})` } : null
+  }
+
   const models = liveElo()
   const haveElo = models.some((m) => m.elo != null)
   if (!haveElo) return null

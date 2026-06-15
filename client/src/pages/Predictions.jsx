@@ -42,8 +42,8 @@ export default function Predictions() {
       <div>
         <h1 className="font-display text-3xl font-bold tracking-tightest text-white">Predictions</h1>
         <p className="text-sm text-slate-400">
-          Bet on AI events — releases, capability milestones, company moves. Odds shift as the
-          pool fills.
+          Bet on AI events — releases, capability milestones, benchmark leaders, and which model
+          ends the year most valued. Odds shift as the pool fills.
         </p>
       </div>
 

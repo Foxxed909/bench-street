@@ -178,6 +178,12 @@ ensureColumn('models', 'dislike_count', 'dislike_count INTEGER NOT NULL DEFAULT 
 ensureColumn('votes', 'value', 'value INTEGER NOT NULL DEFAULT 1')
 // Curated named benchmark scores (JSON: {"BridgeBench":72,"SWE-bench":68,...}).
 ensureColumn('models', 'benchmarks', 'benchmarks TEXT')
+// Lifecycle: 'active' (tradeable) | 'suspended' (listed, not tradeable). status_note
+// carries the human explanation (e.g. the Fable/Mythos export suspension).
+ensureColumn('models', 'status', "status TEXT NOT NULL DEFAULT 'active'")
+ensureColumn('models', 'status_note', 'status_note TEXT')
+// Release date (ISO) — drives the "Newest" sort + "new" badge.
+ensureColumn('models', 'released_at', 'released_at TEXT')
 // Carry any legacy like tally forward into like_count once.
 db.exec('UPDATE models SET like_count = vote_count WHERE like_count = 0 AND vote_count > 0')
 // Live signal-feed mapping (OpenRouter / HuggingFace ids).

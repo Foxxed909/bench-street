@@ -1,5 +1,35 @@
 # Bench Street — Internal Notes
 
+## Real lineups, suspended models, research bets (v1.0.0)
+- **Roster 52 → 32.** Deleted `TIER_BASES`/`TIERS`/`TIER_MODELS` from seed.js. New `VARIANTS` array
+  (10 real models: gpt-5-5(+pro), gpt-5-6(+pro), grok-4-3(+heavy), gemini-3-5-pro, gemini-3-5-flash,
+  claude-fable-5, claude-mythos-5) appended to `BASE_ROSTER` (22). The old fictional `mythos-5`
+  (company 'Mythos') is gone; `claude-mythos-5` (Anthropic) replaces it.
+- **Idempotent seed + reconcile.** The model upsert now runs on EVERY boot (moved out of the
+  `modelCount===0||force` guard), so a plain redeploy migrates prod. Baseline signal rows seed only
+  when a model has zero `model_signals` (guarded by a count) — the live feed appends the rest.
+  A reconcile pass deletes any model whose slug isn't in `ROSTER` (cascades clear its votes/holdings/
+  comments/candles). This is how prod dropped from 52 → 32 on redeploy with no force-reseed.
+- **Lifecycle columns.** `models.status` ('active'|'suspended', default active), `status_note`,
+  `released_at` (additive `ensureColumn` migrations). Fable/Mythos seed as `status:'suspended'` with
+  the export-directive note. decorate() exposes `status`/`statusNote`/`releasedAt`. Vote route 400s on
+  suspended; trade.js 400s on suspended (belt-and-suspenders with the price>0 guard).
+- **Research bets.** Two new auto-resolver kinds in resolver.js, handled BEFORE the live-ELO guard
+  (they don't need ELO): `bench_top` (highest `benchmarks[key]` among candidate slugs, at close) and
+  `price_top` (highest `models.price` among candidates, at close; returns null if all $0 → admin).
+  Outcome labels MUST equal model display names so `outcomeByLabel` maps the winner. Seed markets:
+  `bridgebench-top-2026` (Benchmarks/auto), `most-valued-2026` (Price action/auto),
+  `fable-restored-2026` (News/admin binary). All close 2026-12-31.
+- **Newest-on-top.** `released_at` on all models (BASE_ROSTER got plausible 2025-08…2026-02 dates).
+  format.js: removed `splitTier`/`TIER_WORDS`, added `isNew(releasedAt)` (<45d) + `releaseLabel()`.
+  Floor: new `new` sort (default), "Newest" tab first, `new`/`suspended` pills, `disabled` on
+  suspended rows' LikeDislike. ModelDetail: suspended banner + disabled trade/vote + release date.
+  LikeDislike.jsx gained a `disabled` prop. Predictions needed no structural change — new category
+  chips appear automatically.
+- **Verified live (2026-06-15):** API serves 32 models / 0 tier slugs / Fable+Mythos suspended;
+  benchstreet.vercel.app renders Newest-default Floor, suspended badges+banner, disabled Buy/Sell,
+  all 3 bet markets with chips, 0 console errors (one transient WS blip, not code).
+
 ## Likes/dislikes, models, benchmarks (v0.9.0)
 - **Net sentiment drives price:** `price = max(0, likes − dislikes) × perVoteValue`. `votes` table
   gained a `value` column (+1 like / −1 dislike, one row per user/model). `models.like_count` +

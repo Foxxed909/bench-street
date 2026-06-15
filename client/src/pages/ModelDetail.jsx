@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import { api } from '../lib/api.js'
 import { usePrices } from '../store/prices.jsx'
@@ -9,7 +9,7 @@ import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import LikeDislike from '../components/LikeDislike.jsx'
 import Benchmarks from '../components/Benchmarks.jsx'
 import Comments from '../components/Comments.jsx'
-import { money, num, pct, compact, upDown, splitTier } from '../lib/format.js'
+import { money, num, pct, compact, upDown, isNew, releaseLabel } from '../lib/format.js'
 
 // Live signals shown for transparency. API price scales each vote's value; the
 // rest are context only.
@@ -106,7 +106,8 @@ export default function ModelDetail() {
   const up = changePct >= 0
   const perVote = model.perVoteValue ?? voteRate
   const costMult = voteRate ? perVote / voteRate : 1
-  const canTrade = livePrice > 0
+  const suspended = model.status === 'suspended'
+  const canTrade = livePrice > 0 && !suspended
   const maxShares = user && livePrice ? Math.floor(user.cash / livePrice) : 0
   const estCost = (Number(shares) || 0) * (livePrice || 0)
 
@@ -118,6 +119,26 @@ export default function ModelDetail() {
       >
         <ArrowLeft size={15} /> The Floor
       </Link>
+
+      {suspended && (
+        <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-300" />
+          <div className="text-sm">
+            <div className="font-semibold text-amber-200">Access suspended — not tradeable</div>
+            <p className="mt-0.5 text-amber-200/80">
+              {model.statusNote || 'This model is currently suspended.'}
+            </p>
+            <a
+              href="https://www.anthropic.com/news"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-block text-amber-300 underline underline-offset-2 hover:text-amber-200"
+            >
+              Read the statement →
+            </a>
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
@@ -132,16 +153,19 @@ export default function ModelDetail() {
               </span>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold text-white">{splitTier(model.name).base}</h1>
-                  {splitTier(model.name).tier && (
-                    <span className="pill bg-accent/15 text-accent">
-                      {splitTier(model.name).tier}
-                    </span>
+                  <h1 className="text-xl font-bold text-white">{model.name}</h1>
+                  {suspended ? (
+                    <span className="pill bg-amber-500/15 text-amber-300">suspended</span>
+                  ) : (
+                    isNew(model.releasedAt) && <span className="pill bg-accent/15 text-accent">new</span>
                   )}
                   {model.openSource && <span className="pill bg-up/15 text-up">open</span>}
                 </div>
                 <p className="text-sm text-slate-400">
                   {model.company} · <span className="font-mono">{model.ticker}</span>
+                  {releaseLabel(model.releasedAt) && (
+                    <> · released {releaseLabel(model.releasedAt)}</>
+                  )}
                 </p>
               </div>
               <div className="ml-auto text-right">
@@ -339,7 +363,9 @@ export default function ModelDetail() {
 
             {!canTrade && (
               <p className="text-xs text-slate-500 mt-3">
-                No price yet — this model needs votes before it can be traded.
+                {suspended
+                  ? 'This model is suspended and cannot be traded.'
+                  : 'No price yet — this model needs votes before it can be traded.'}
               </p>
             )}
 
@@ -393,6 +419,7 @@ export default function ModelDetail() {
                 likes={liveLikes}
                 dislikes={liveDislikes}
                 myVote={model.myVote}
+                disabled={suspended}
                 onChange={(myVote, l, d) =>
                   setModel((mm) => ({
                     ...mm,

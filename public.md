@@ -1,5 +1,21 @@
 # Bench Street — Public Changelog
 
+## v1.0.0 — Real model lineups, suspended models, research bets (2026-06-15)
+
+### Features
+- **Real model names.** Retired the synthetic low/medium/high/xhigh/max effort matrix. Each lab now
+  shows the lineup it actually ships — GPT-5.5 & GPT-5.6 (base + Pro), Grok 4.3 (base + Heavy),
+  Gemini 3.5 (Pro + Flash), and the Anthropic pair. 32 models total (down from 52), no more fake
+  "GPT-5.6 Max".
+- **Suspended models.** Claude Fable 5 & Claude Mythos 5 are listed with an "Access suspended" badge
+  reflecting the real 2026-06-12 US-government export directive. They show a notice on their page,
+  aren't tradeable, and can't be voted on — but stay visible.
+- **Research bets.** Three new prediction markets that settle on Bench Street's own data:
+  *Which model tops BridgeBench at year-end?* (Benchmarks), *Most valued model at year-end?*
+  (Price action), and *Will Fable 5 & Mythos 5 access be restored in 2026?* (News).
+- **Newest on top.** The Floor defaults to a "Newest" sort, with a "new" badge on models released in
+  the last ~45 days and a release date on each model page.
+
 ## v0.9.0 — Likes & dislikes, new models, benchmarks, polish (2026-06-15)
 
 ### Features
