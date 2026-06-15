@@ -169,8 +169,17 @@ function ensureColumn(table, column, ddl) {
 }
 // Demand pressure (legacy; retired in favour of votes — kept dormant to avoid a drop).
 ensureColumn('models', 'demand', 'demand REAL NOT NULL DEFAULT 0')
-// Denormalized count of community votes — the live price driver.
+// Denormalized count of community votes (legacy = likes; kept for back-compat).
 ensureColumn('models', 'vote_count', 'vote_count INTEGER NOT NULL DEFAULT 0')
+// Like / dislike tallies. Net (likes − dislikes) drives price.
+ensureColumn('models', 'like_count', 'like_count INTEGER NOT NULL DEFAULT 0')
+ensureColumn('models', 'dislike_count', 'dislike_count INTEGER NOT NULL DEFAULT 0')
+// A vote's stance: +1 like, -1 dislike. One row per user per model.
+ensureColumn('votes', 'value', 'value INTEGER NOT NULL DEFAULT 1')
+// Curated named benchmark scores (JSON: {"BridgeBench":72,"SWE-bench":68,...}).
+ensureColumn('models', 'benchmarks', 'benchmarks TEXT')
+// Carry any legacy like tally forward into like_count once.
+db.exec('UPDATE models SET like_count = vote_count WHERE like_count = 0 AND vote_count > 0')
 // Live signal-feed mapping (OpenRouter / HuggingFace ids).
 ensureColumn('models', 'openrouter_id', 'openrouter_id TEXT')
 ensureColumn('models', 'hf_id', 'hf_id TEXT')

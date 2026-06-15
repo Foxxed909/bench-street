@@ -203,7 +203,9 @@ export async function ingestSignals({ log = console.log, io = null } = {}) {
   // Token prices feed each vote's value, so refresh prices and broadcast them.
   const prices = recomputePrices()
   if (io && prices.size) {
-    const models = db.prepare('SELECT id, price, vote_count AS votes FROM models').all()
+    const models = db
+      .prepare('SELECT id, price, like_count AS likes, dislike_count AS dislikes FROM models')
+      .all()
     io.emit('prices', { t: Date.now(), models })
   }
   lastRun = {

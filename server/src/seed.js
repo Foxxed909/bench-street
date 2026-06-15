@@ -5,7 +5,7 @@ import { recomputePrices } from './pricing.js'
 // real-time source). api_price and downloads are seeded here but get overwritten with
 // LIVE data by the signal feed (see ingest.js): each model is mapped to a real
 // OpenRouter id (pricing) and, for open models, a HuggingFace repo (downloads).
-const ROSTER = [
+const BASE_ROSTER = [
   { slug: 'gpt-5-2',         name: 'GPT-5.2',            company: 'OpenAI',    ticker: 'GPT52', open: 0, color: '#10a37f', elo: 1372, usage: 16.4, bench: 91, downloads: null,      apiPrice: 9.0,  vol: 0.010 },
   { slug: 'gpt-5-mini',      name: 'GPT-5 mini',         company: 'OpenAI',    ticker: 'GPT5M', open: 0, color: '#10a37f', elo: 1318, usage: 11.2, bench: 84, downloads: null,      apiPrice: 1.2,  vol: 0.009 },
   { slug: 'o4',              name: 'o4',                 company: 'OpenAI',    ticker: 'O4',    open: 0, color: '#0e8a6c', elo: 1361, usage: 6.1,  bench: 93, downloads: null,      apiPrice: 14.0, vol: 0.012 },
@@ -29,6 +29,72 @@ const ROSTER = [
   { slug: 'command-a',       name: 'Command A',          company: 'Cohere',    ticker: 'CMDA',  open: 0, color: '#39c5bb', elo: 1262, usage: 1.4,  bench: 75, downloads: null,      apiPrice: 2.5,  vol: 0.011 },
   { slug: 'phi-4',           name: 'Phi-4',              company: 'Microsoft', ticker: 'PHI4',  open: 1, color: '#00a4ef', elo: 1224, usage: 1.1,  bench: 71, downloads: 3900000,  apiPrice: 0.2,  vol: 0.013 }
 ]
+
+// Latest frontier bases that ship in reasoning-effort tiers (low → max). Each
+// tier scales token price, Elo and benchmarks: more thinking costs more and
+// scores higher. Expanded into the roster below.
+const TIER_BASES = [
+  { slug: 'gpt-5-5',       name: 'GPT-5.5',        company: 'OpenAI',    ticker: 'GPT55', color: '#10a37f', elo: 1402, bench: 93, apiPrice: 7.0,  vol: 0.011 },
+  { slug: 'gpt-5-6',       name: 'GPT-5.6',        company: 'OpenAI',    ticker: 'GPT56', color: '#0e8f6f', elo: 1418, bench: 94, apiPrice: 8.0,  vol: 0.012 },
+  { slug: 'claude-fable-5', name: 'Claude Fable 5', company: 'Anthropic', ticker: 'FABL5', color: '#d97757', elo: 1426, bench: 95, apiPrice: 16.0, vol: 0.010 },
+  { slug: 'mythos-5',      name: 'Mythos 5',       company: 'Mythos',    ticker: 'MYTH5', color: '#9b6dff', elo: 1389, bench: 90, apiPrice: 5.0,  vol: 0.012 },
+  { slug: 'gemini-3-5-pro', name: 'Gemini 3.5 Pro', company: 'Google',   ticker: 'GEM35', color: '#4285f4', elo: 1410, bench: 93, apiPrice: 7.5,  vol: 0.010 },
+  { slug: 'grok-4-3',      name: 'Grok 4.3',       company: 'xAI',       ticker: 'GROK43', color: '#5b6470', elo: 1396, bench: 91, apiPrice: 6.5,  vol: 0.013 }
+]
+
+const TIERS = [
+  { suf: 'low',    tag: 'low',    short: 'Lo', priceMul: 0.45, eloAdj: -48, benchAdj: -13 },
+  { suf: 'medium', tag: 'medium', short: 'Md', priceMul: 0.7,  eloAdj: -24, benchAdj: -7 },
+  { suf: 'high',   tag: 'high',   short: 'Hi', priceMul: 1.0,  eloAdj: 0,   benchAdj: 0 },
+  { suf: 'xhigh',  tag: 'xhigh',  short: 'Xh', priceMul: 1.6,  eloAdj: 12,  benchAdj: 4 },
+  { suf: 'max',    tag: 'max',    short: 'Mx', priceMul: 2.4,  eloAdj: 22,  benchAdj: 6 }
+]
+
+const TIER_MODELS = TIER_BASES.flatMap((b) =>
+  TIERS.map((t) => ({
+    slug: `${b.slug}-${t.suf}`,
+    name: `${b.name} ${t.tag}`,
+    company: b.company,
+    ticker: `${b.ticker}${t.short}`,
+    open: 0,
+    color: b.color,
+    elo: b.elo + t.eloAdj,
+    usage: 0,
+    bench: Math.max(40, Math.min(99, b.bench + t.benchAdj)),
+    downloads: null,
+    apiPrice: +(b.apiPrice * t.priceMul).toFixed(2),
+    vol: b.vol
+  }))
+)
+
+const ROSTER = [...BASE_ROSTER, ...TIER_MODELS]
+
+// Curated benchmark suite shown per model. Scores derive from each model's
+// composite quality (`bench`) with a per-benchmark bias + a stable jitter, so
+// they're varied but deterministic (no reseed drift). BridgeBench is the live
+// vibe-coding board (bridgebench.ai); the rest mirror well-known evals.
+const BENCH_DEFS = [
+  { key: 'BridgeBench', off: -2 },
+  { key: 'SWE-bench', off: -7 },
+  { key: 'GPQA', off: 5 },
+  { key: 'AIME', off: -3 },
+  { key: 'MMLU', off: 7 }
+]
+
+function hashJitter(s) {
+  let h = 0
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return (h % 7) - 3 // -3..+3
+}
+
+function benchmarksFor(model) {
+  const base = model.bench ?? 70
+  const out = {}
+  for (const b of BENCH_DEFS) {
+    out[b.key] = Math.max(20, Math.min(99, Math.round(base + b.off + hashJitter(model.slug + b.key))))
+  }
+  return JSON.stringify(out)
+}
 
 // Roster slug -> real provider ids. `or` = OpenRouter id (live pricing for every model);
 // `hf` = HuggingFace repo (live downloads, open models only). Best-match to current real
@@ -159,12 +225,14 @@ export function seedDatabase({ force = false } = {}) {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
     const idBySlug = db.prepare('SELECT id FROM models WHERE slug = ?')
+    const setBenchmarks = db.prepare('UPDATE models SET benchmarks = ? WHERE id = ?')
     const insModels = db.transaction(() => {
       for (const m of ROSTER) {
         insModel.run({ ...m, created_at: now })
         // On upsert-conflict lastInsertRowid is unreliable, so resolve id by slug.
         const modelId = idBySlug.get(m.slug).id
         insSignal.run(modelId, m.elo, m.usage, m.bench, m.downloads, m.apiPrice, now)
+        setBenchmarks.run(benchmarksFor(m), modelId)
       }
     })
     insModels()

@@ -9,15 +9,15 @@ import { num, pct, upDown } from '../lib/format.js'
 // The Bench Street Index hero — a single living number for the whole market,
 // with its own sparkline and the day's headline stats alongside.
 export default function MarketStats({ models }) {
-  const { prices, votes } = usePrices()
+  const { prices, likes, dislikes } = usePrices()
   const [hist, setHist] = useState([])
   const lastPush = useRef(0)
 
   const live = models.map((m) => {
     const price = prices[m.id] ?? m.price
     const cp = m.prevClose ? ((price - m.prevClose) / m.prevClose) * 100 : 0
-    const v = votes[m.id] ?? m.votes ?? 0
-    return { ...m, price, cp, v }
+    const net = (likes[m.id] ?? m.likes ?? 0) - (dislikes[m.id] ?? m.dislikes ?? 0)
+    return { ...m, price, cp, net }
   })
 
   const index = live.length ? live.reduce((a, m) => a + m.price, 0) / live.length : 0
@@ -26,7 +26,7 @@ export default function MarketStats({ models }) {
   const gainers = live.filter((m) => m.cp > 0.01).length
   const losers = live.filter((m) => m.cp < -0.01).length
   const topMover = [...live].sort((a, b) => b.cp - a.cp)[0]
-  const topVoted = [...live].sort((a, b) => b.v - a.v)[0]
+  const topRated = [...live].sort((a, b) => b.net - a.net)[0]
 
   // Sample the index into a sparkline (throttled to ~1/sec). Hook must run every
   // render — keep it above any early return.
@@ -91,10 +91,10 @@ export default function MarketStats({ models }) {
           tone={upDown(topMover?.cp || 0)}
         />
         <Highlight
-          label="Most voted"
-          model={topVoted}
+          label="Top rated"
+          model={topRated}
           icon={ChevronUp}
-          value={`${num(topVoted?.v || 0, 0)} votes`}
+          value={`${topRated?.net > 0 ? '+' : ''}${num(topRated?.net || 0, 0)} net`}
           tone="text-accent"
         />
       </div>

@@ -6,9 +6,21 @@ import { optionalAuth, requireAuth } from '../auth.js'
 
 const router = Router()
 
-function decorate(m, votedByMe) {
+function parseBenchmarks(json) {
+  if (!json) return null
+  try {
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
+function decorate(m, myVote = 0) {
   const change = m.price - m.prev_close
   const changePct = m.prev_close ? (change / m.prev_close) * 100 : 0
+  const likes = m.like_count || 0
+  const dislikes = m.dislike_count || 0
+  const total = likes + dislikes
   return {
     id: m.id,
     slug: m.slug,
@@ -21,11 +33,15 @@ function decorate(m, votedByMe) {
     prevClose: m.prev_close,
     tokenPrice: m.api_price ?? null,
     perVoteValue: perVoteValue(m.api_price),
-    votes: m.vote_count || 0,
-    votedByMe: !!votedByMe,
+    likes,
+    dislikes,
+    net: likes - dislikes,
+    approval: total ? Math.round((likes / total) * 100) : null,
+    myVote, // 1 = liked, -1 = disliked, 0 = none
     liveSignals: !!(m.openrouter_id || m.hf_id),
     change: +change.toFixed(2),
     changePct: +changePct.toFixed(2),
+    benchmarks: parseBenchmarks(m.benchmarks),
     signals: {
       elo: m.elo,
       usage: m.usage,
@@ -38,7 +54,8 @@ function decorate(m, votedByMe) {
 
 const SELECT = `
   SELECT m.id, m.slug, m.name, m.company, m.ticker, m.open_source, m.color,
-         m.price, m.prev_close, m.vote_count, m.openrouter_id, m.hf_id,
+         m.price, m.prev_close, m.like_count, m.dislike_count, m.benchmarks,
+         m.openrouter_id, m.hf_id,
          s.elo, s.usage, s.bench, s.downloads, s.api_price
     FROM models m
     LEFT JOIN model_signals s ON s.id = (
@@ -48,17 +65,20 @@ const SELECT = `
 
 const listStmt = db.prepare(`${SELECT} ORDER BY m.price DESC`)
 
-function votedSetFor(userId) {
-  if (!userId) return new Set()
-  return new Set(
-    db.prepare('SELECT model_id FROM votes WHERE user_id = ?').all(userId).map((r) => r.model_id)
-  )
+// Map of model_id -> the user's stance (+1 like, -1 dislike).
+function stanceMapFor(userId) {
+  const map = new Map()
+  if (!userId) return map
+  for (const r of db.prepare('SELECT model_id, value FROM votes WHERE user_id = ?').all(userId)) {
+    map.set(r.model_id, r.value)
+  }
+  return map
 }
 
 router.get('/', optionalAuth, (req, res) => {
-  const voted = votedSetFor(req.user?.id)
+  const stance = stanceMapFor(req.user?.id)
   res.json({
-    models: listStmt.all().map((m) => decorate(m, voted.has(m.id))),
+    models: listStmt.all().map((m) => decorate(m, stance.get(m.id) || 0)),
     signals: signalsStatus(),
     voteRate: VOTE_RATE
   })
@@ -68,9 +88,10 @@ router.get('/:slug', optionalAuth, (req, res) => {
   const m = db.prepare(`${SELECT} WHERE m.slug = ?`).get(req.params.slug)
   if (!m) return res.status(404).json({ error: 'model not found' })
 
-  const votedByMe = req.user
-    ? !!db.prepare('SELECT 1 FROM votes WHERE user_id = ? AND model_id = ?').get(req.user.id, m.id)
-    : false
+  const myVote = req.user
+    ? db.prepare('SELECT value FROM votes WHERE user_id = ? AND model_id = ?').get(req.user.id, m.id)
+        ?.value || 0
+    : 0
 
   const candles = db
     .prepare(
@@ -81,38 +102,63 @@ router.get('/:slug', optionalAuth, (req, res) => {
     .all(m.id)
     .reverse()
 
-  res.json({ model: decorate(m, votedByMe), candles, voteRate: VOTE_RATE })
+  res.json({ model: decorate(m, myVote), candles, voteRate: VOTE_RATE })
 })
 
-// Toggle the signed-in user's vote for a model. One vote per user per model.
+// Recompute and persist a model's like/dislike tallies from the votes table.
+function syncTallies(modelId) {
+  const c = db
+    .prepare(
+      `SELECT COALESCE(SUM(value = 1), 0) AS likes, COALESCE(SUM(value = -1), 0) AS dislikes
+         FROM votes WHERE model_id = ?`
+    )
+    .get(modelId)
+  db.prepare(
+    'UPDATE models SET like_count = ?, dislike_count = ?, vote_count = ? WHERE id = ?'
+  ).run(c.likes, c.dislikes, c.likes, modelId)
+  return c
+}
+
+// Cast a like (+1) or dislike (-1). Re-casting the same stance clears it (toggle);
+// casting the opposite stance switches. One stance per user per model.
 router.post('/:slug/vote', requireAuth, (req, res) => {
   const m = db.prepare('SELECT id FROM models WHERE slug = ?').get(req.params.slug)
   if (!m) return res.status(404).json({ error: 'model not found' })
 
-  let voted
+  const want = Number(req.body?.value)
+  if (want !== 1 && want !== -1) {
+    return res.status(400).json({ error: 'value must be 1 (like) or -1 (dislike)' })
+  }
+
+  let myVote = 0
   db.transaction(() => {
     const existing = db
-      .prepare('SELECT 1 FROM votes WHERE user_id = ? AND model_id = ?')
+      .prepare('SELECT value FROM votes WHERE user_id = ? AND model_id = ?')
       .get(req.user.id, m.id)
-    if (existing) {
+    if (existing && existing.value === want) {
       db.prepare('DELETE FROM votes WHERE user_id = ? AND model_id = ?').run(req.user.id, m.id)
-      db.prepare('UPDATE models SET vote_count = MAX(0, vote_count - 1) WHERE id = ?').run(m.id)
-      voted = false
-    } else {
-      db.prepare('INSERT INTO votes (user_id, model_id, created_at) VALUES (?, ?, ?)').run(
+      myVote = 0
+    } else if (existing) {
+      db.prepare('UPDATE votes SET value = ?, created_at = ? WHERE user_id = ? AND model_id = ?').run(
+        want,
+        new Date().toISOString(),
         req.user.id,
-        m.id,
-        new Date().toISOString()
+        m.id
       )
-      db.prepare('UPDATE models SET vote_count = vote_count + 1 WHERE id = ?').run(m.id)
-      voted = true
+      myVote = want
+    } else {
+      db.prepare(
+        'INSERT INTO votes (user_id, model_id, value, created_at) VALUES (?, ?, ?, ?)'
+      ).run(req.user.id, m.id, want, new Date().toISOString())
+      myVote = want
     }
+    syncTallies(m.id)
   })()
 
-  const votes = db.prepare('SELECT vote_count FROM models WHERE id = ?').get(m.id).vote_count
-  // Votes are the price: recompute this model and broadcast the new price live.
+  const c = db.prepare('SELECT like_count, dislike_count FROM models WHERE id = ?').get(m.id)
+  // Net sentiment is the price: recompute this model and broadcast it live.
   const price = pushModelPrice(req.app.get('io'), m.id)
-  res.json({ ok: true, voted, votes, price })
+  res.json({ ok: true, myVote, likes: c.like_count, dislikes: c.dislike_count, price })
 })
 
 const COMMENT_MAX = 500

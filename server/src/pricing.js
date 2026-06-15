@@ -2,11 +2,11 @@ import db from './db.js'
 
 // --- Price model -----------------------------------------------------------
 // A model's price is how much the community values it: it launches at $0 and
-// rises only as people vote. Each vote is worth a base amount scaled by the
-// model's real token economics, so a vote on a pricey frontier model moves it
-// more than a vote on a cheap small one — but with zero votes, every model is $0.
+// moves only as people vote. Net sentiment (likes − dislikes) sets it, and each
+// vote is worth a base amount scaled by the model's real token economics — so a
+// vote on a pricey frontier model moves it more than a vote on a cheap one.
 //
-//   price        = votes × perVoteValue
+//   price        = max(0, likes − dislikes) × perVoteValue
 //   perVoteValue = VOTE_RATE × costFactor(blended $/Mtok)
 //   costFactor   = clamp(0.5, 2.0, tokenPrice ÷ COST_REF)
 //
@@ -27,16 +27,16 @@ export function perVoteValue(tokenPrice) {
   return +(VOTE_RATE * costFactor(tokenPrice)).toFixed(2)
 }
 
-// The price for a given vote count + token price. Zero votes → $0.
-export function priceFor(votes, tokenPrice) {
-  return +((votes || 0) * perVoteValue(tokenPrice)).toFixed(2)
+// The price for a given net sentiment + token price. Net ≤ 0 → $0.
+export function priceFor(net, tokenPrice) {
+  return +(Math.max(0, net || 0) * perVoteValue(tokenPrice)).toFixed(2)
 }
 
-// Latest token price + current vote count for every model.
+// Latest token price + current like/dislike tallies for every model.
 function priceInputs() {
   return db
     .prepare(
-      `SELECT m.id, m.vote_count, s.api_price
+      `SELECT m.id, m.like_count, m.dislike_count, s.api_price
          FROM models m
          LEFT JOIN model_signals s ON s.id = (
            SELECT id FROM model_signals
@@ -70,7 +70,8 @@ export function recomputePrices() {
   const t = epochMinute()
   const apply = db.transaction(() => {
     for (const r of rows) {
-      const price = priceFor(r.vote_count, r.api_price)
+      const net = (r.like_count || 0) - (r.dislike_count || 0)
+      const price = priceFor(net, r.api_price)
       update.run(price, r.id)
       upCandle.run({ model_id: r.id, t, price })
       result.set(r.id, price)
@@ -85,7 +86,7 @@ export function recomputePrices() {
 export function pushModelPrice(io, modelId) {
   const r = db
     .prepare(
-      `SELECT m.id, m.vote_count, s.api_price
+      `SELECT m.id, m.like_count, m.dislike_count, s.api_price
          FROM models m
          LEFT JOIN model_signals s ON s.id = (
            SELECT id FROM model_signals WHERE model_id = m.id
@@ -96,13 +97,15 @@ export function pushModelPrice(io, modelId) {
     .get(modelId)
   if (!r) return null
 
-  const price = priceFor(r.vote_count, r.api_price)
+  const likes = r.like_count || 0
+  const dislikes = r.dislike_count || 0
+  const price = priceFor(likes - dislikes, r.api_price)
   db.prepare('UPDATE models SET price = ? WHERE id = ?').run(price, r.id)
   upCandle.run({ model_id: r.id, t: epochMinute(), price })
   if (io) {
     io.emit('prices', {
       t: Date.now(),
-      models: [{ id: r.id, price, votes: r.vote_count || 0 }]
+      models: [{ id: r.id, price, likes, dislikes }]
     })
   }
   return price
@@ -124,7 +127,7 @@ export function startPricing(io) {
 
   // Broadcast the opening board.
   const models = db
-    .prepare('SELECT id, price, vote_count AS votes FROM models')
+    .prepare('SELECT id, price, like_count AS likes, dislike_count AS dislikes FROM models')
     .all()
   if (io) io.emit('prices', { t: Date.now(), models })
 

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#121a28"/>
+      <stop offset="1" stop-color="#0a0e16"/>
+    </linearGradient>
+    <linearGradient id="up" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#1ba36a"/>
+      <stop offset="1" stop-color="#2ee08f"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bg)" stroke="#26334a" stroke-width="1.5"/>
+  <!-- rising candlesticks -->
+  <g stroke-linecap="round">
+    <line x1="17" y1="40" x2="17" y2="50" stroke="#3a4a63" stroke-width="2.5"/>
+    <rect x="13.5" y="38" width="7" height="9" rx="2" fill="#3a4a63"/>
+    <line x1="32" y1="20" x2="32" y2="44" stroke="url(#up)" stroke-width="2.5"/>
+    <rect x="28.5" y="26" width="7" height="14" rx="2" fill="url(#up)"/>
+    <line x1="47" y1="14" x2="47" y2="34" stroke="#f0c04e" stroke-width="2.5"/>
+    <rect x="43.5" y="18" width="7" height="12" rx="2" fill="#f0c04e"/>
+  </g>
+  <!-- upward trend arrow -->
+  <path d="M14 46 L30 32 L40 39 L52 19" fill="none" stroke="#f0c04e" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+  <path d="M45 19 L52 19 L52 26" fill="none" stroke="#f0c04e" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+</svg>

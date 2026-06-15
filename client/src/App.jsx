@@ -42,8 +42,8 @@ export default function App() {
         </Routes>
       </main>
       <footer className="max-w-6xl mx-auto px-4 py-8 text-xs text-slate-600 border-t border-edge/50 mt-6">
-        Bench Street · play-money AI model exchange · prices are simulated from signal-derived
-        fundamentals and player demand — not investment advice.
+        Bench Street · play-money AI model exchange · prices are set by the community — every model
+        starts at $0 and moves on your votes. Not investment advice.
       </footer>
     </div>
   )

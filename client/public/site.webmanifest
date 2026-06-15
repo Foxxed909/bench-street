@@ -1,0 +1,9 @@
+{
+  "name": "Bench Street",
+  "short_name": "BenchStreet",
+  "description": "A play-money exchange where you trade real AI models like stocks.",
+  "icons": [{ "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any" }],
+  "theme_color": "#0a0e16",
+  "background_color": "#0a0e16",
+  "display": "standalone"
+}

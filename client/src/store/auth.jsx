@@ -14,7 +14,10 @@ export function AuthProvider({ children }) {
     }
     api
       .get('/auth/me')
-      .then((d) => setUser(d.user))
+      .then((d) => {
+        if (d.user) setUser(d.user)
+        else setToken(null) // stale/expired token — drop it
+      })
       .catch(() => setToken(null))
       .finally(() => setLoading(false))
   }, [])

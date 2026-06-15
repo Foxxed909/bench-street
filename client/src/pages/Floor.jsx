@@ -6,15 +6,23 @@ import { usePrices } from '../store/prices.jsx'
 import { useAuth } from '../store/auth.jsx'
 import Sparkline from '../components/Sparkline.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
-import VoteButton from '../components/VoteButton.jsx'
+import LikeDislike from '../components/LikeDislike.jsx'
 import MarketStats from '../components/MarketStats.jsx'
-import { pct, upDown, ago } from '../lib/format.js'
+import { pct, upDown, ago, splitTier } from '../lib/format.js'
+
+const TIER_TONE = {
+  low: 'bg-slate-500/15 text-slate-400',
+  medium: 'bg-sky-500/15 text-sky-300',
+  high: 'bg-up/15 text-up',
+  xhigh: 'bg-accent/15 text-accent',
+  max: 'bg-purple-500/20 text-purple-300'
+}
 
 const SORTS = {
   price: (a, b) => b.livePrice - a.livePrice,
   gainers: (a, b) => b.liveChangePct - a.liveChangePct,
   losers: (a, b) => a.liveChangePct - b.liveChangePct,
-  voted: (a, b) => b.liveVotes - a.liveVotes
+  rated: (a, b) => b.net - a.net
 }
 
 export default function Floor() {
@@ -23,7 +31,7 @@ export default function Floor() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('price')
   const [refreshing, setRefreshing] = useState(false)
-  const { prices, history, votes } = usePrices()
+  const { prices, history, likes, dislikes } = usePrices()
   const { user } = useAuth()
 
   function load() {
@@ -37,8 +45,12 @@ export default function Floor() {
   }
   useEffect(load, [user])
 
-  function patchVote(id, voted, count) {
-    setModels((ms) => ms.map((m) => (m.id === id ? { ...m, votedByMe: voted, votes: count } : m)))
+  function patchVote(id, myVote, likeCount, dislikeCount) {
+    setModels((ms) =>
+      ms.map((m) =>
+        m.id === id ? { ...m, myVote, likes: likeCount, dislikes: dislikeCount } : m
+      )
+    )
   }
 
   async function refreshSignals() {
@@ -58,16 +70,20 @@ export default function Floor() {
       .map((m) => {
         const price = prices[m.id] ?? m.price
         const changePct = m.prevClose ? ((price - m.prevClose) / m.prevClose) * 100 : 0
+        const liveLikes = likes[m.id] ?? m.likes ?? 0
+        const liveDislikes = dislikes[m.id] ?? m.dislikes ?? 0
         return {
           ...m,
           livePrice: price,
           liveChangePct: changePct,
-          liveVotes: votes[m.id] ?? m.votes ?? 0
+          liveLikes,
+          liveDislikes,
+          net: liveLikes - liveDislikes
         }
       })
       .filter((m) => `${m.name} ${m.company} ${m.ticker}`.toLowerCase().includes(q.toLowerCase()))
       .sort(SORTS[sort])
-  }, [models, prices, votes, q, sort])
+  }, [models, prices, likes, dislikes, q, sort])
 
   return (
     <div className="space-y-6 fade-up">
@@ -113,7 +129,7 @@ export default function Floor() {
             ['price', 'Price'],
             ['gainers', 'Gainers'],
             ['losers', 'Losers'],
-            ['voted', 'Most voted']
+            ['rated', 'Top rated']
           ].map(([key, label]) => (
             <button
               key={key}
@@ -134,7 +150,7 @@ export default function Floor() {
               <th className="px-2 font-medium">Model</th>
               <th className="px-4 font-medium text-right">Price</th>
               <th className="px-4 font-medium text-right">24h</th>
-              <th className="px-4 font-medium text-center hidden sm:table-cell">Votes</th>
+              <th className="px-4 font-medium text-center hidden sm:table-cell">Sentiment</th>
               <th className="px-4 font-medium text-right hidden md:table-cell">Trend</th>
             </tr>
           </thead>
@@ -156,8 +172,13 @@ export default function Floor() {
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate font-medium text-white transition group-hover:text-accent">
-                          {m.name}
+                          {splitTier(m.name).base}
                         </span>
+                        {splitTier(m.name).tier && (
+                          <span className={`pill ${TIER_TONE[splitTier(m.name).tier]}`}>
+                            {splitTier(m.name).tier}
+                          </span>
+                        )}
                         {m.openSource && <span className="pill bg-up/15 text-up">open</span>}
                         {m.liveSignals && <span className="pill bg-accent/15 text-accent">live</span>}
                       </span>
@@ -175,11 +196,12 @@ export default function Floor() {
                 </td>
                 <td className="hidden px-4 sm:table-cell">
                   <div className="flex justify-center">
-                    <VoteButton
+                    <LikeDislike
                       slug={m.slug}
-                      count={m.liveVotes}
-                      voted={m.votedByMe}
-                      onChange={(voted, count) => patchVote(m.id, voted, count)}
+                      likes={m.liveLikes}
+                      dislikes={m.liveDislikes}
+                      myVote={m.myVote}
+                      onChange={(mv, l, d) => patchVote(m.id, mv, l, d)}
                       size="sm"
                     />
                   </div>

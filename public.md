@@ -1,5 +1,25 @@
 # Bench Street — Public Changelog
 
+## v0.9.0 — Likes & dislikes, new models, benchmarks, polish (2026-06-15)
+
+### Features
+- **Dislikes.** Every model now has like *and* dislike. Net sentiment (likes − dislikes) drives the
+  price: like to push it up, dislike to pull it down. One stance per model, toggleable. Price still
+  floors at $0.
+- **Way more models.** Added the latest frontier models and their full reasoning-effort matrix —
+  GPT-5.5 & GPT-5.6, Claude Fable 5, Mythos 5, Gemini 3.5 Pro, Grok 4.3 — each in low / medium /
+  high / xhigh / max tiers (52 models total). Higher tiers cost more per token and score higher.
+- **Benchmarks.** Each model page shows a benchmark suite — BridgeBench (the live vibe-coding board),
+  SWE-bench, GPQA, AIME, MMLU — as a clean bar chart with an average.
+- **App icon + identity.** Added a candlestick app icon/favicon, social preview tags, and a web
+  manifest so it installs cleanly.
+
+### Polish
+- Reasoning-effort **tier badges** (low→max) across the Floor and model pages.
+- The Floor's sentiment column shows live 👍/👎; "Top rated" sort + highlight by net sentiment.
+- Model page "Community sentiment" card with an approval bar.
+- Fixed a stale-token console error on load; refreshed the footer copy.
+
 ## v0.8.0 — Comments on every model (2026-06-15)
 
 ### Features

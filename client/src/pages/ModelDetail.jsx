@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronUp } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import { api } from '../lib/api.js'
 import { usePrices } from '../store/prices.jsx'
 import { useAuth } from '../store/auth.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
-import VoteButton from '../components/VoteButton.jsx'
+import LikeDislike from '../components/LikeDislike.jsx'
+import Benchmarks from '../components/Benchmarks.jsx'
 import Comments from '../components/Comments.jsx'
-import { money, num, pct, compact, upDown } from '../lib/format.js'
+import { money, num, pct, compact, upDown, splitTier } from '../lib/format.js'
 
 // Live signals shown for transparency. API price scales each vote's value; the
 // rest are context only.
@@ -16,7 +17,6 @@ const SIGNALS = [
   { key: 'apiPrice', label: 'API $/Mtok', fmt: (v) => money(v), note: 'sets vote value' },
   { key: 'elo', label: 'LMArena ELO', fmt: (v) => num(v, 0) },
   { key: 'usage', label: 'Usage share', fmt: (v) => `${num(v, 1)}%` },
-  { key: 'bench', label: 'Benchmarks', fmt: (v) => `${num(v, 0)}/100` },
   { key: 'downloads', label: 'HF downloads', fmt: (v) => compact(v) }
 ]
 
@@ -24,7 +24,7 @@ export default function ModelDetail() {
   const { slug } = useParams()
   const nav = useNavigate()
   const { user, refresh } = useAuth()
-  const { prices, votes } = usePrices()
+  const { prices, likes, dislikes } = usePrices()
 
   const [model, setModel] = useState(null)
   const [chart, setChart] = useState([])
@@ -59,7 +59,9 @@ export default function ModelDetail() {
   }, [slug, user])
 
   const livePrice = model ? prices[model.id] ?? model.price : null
-  const liveVotes = model ? votes[model.id] ?? model.votes ?? 0 : 0
+  const liveLikes = model ? likes[model.id] ?? model.likes ?? 0 : 0
+  const liveDislikes = model ? dislikes[model.id] ?? model.dislikes ?? 0 : 0
+  const net = liveLikes - liveDislikes
 
   useEffect(() => {
     if (!model || !seeded.current || livePrice == null) return
@@ -130,7 +132,12 @@ export default function ModelDetail() {
               </span>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold text-white">{model.name}</h1>
+                  <h1 className="text-xl font-bold text-white">{splitTier(model.name).base}</h1>
+                  {splitTier(model.name).tier && (
+                    <span className="pill bg-accent/15 text-accent">
+                      {splitTier(model.name).tier}
+                    </span>
+                  )}
                   {model.openSource && <span className="pill bg-up/15 text-up">open</span>}
                 </div>
                 <p className="text-sm text-slate-400">
@@ -212,14 +219,18 @@ export default function ModelDetail() {
           <div className="card p-5">
             <h2 className="text-sm font-semibold text-white mb-1">Why this price</h2>
             <p className="text-xs text-slate-500 mb-4">
-              Price is what the crowd values this model at. It launches at $0 and rises{' '}
-              {money(perVote)} per vote — the {money(voteRate)} base scaled ×{num(costMult, 2)} by
-              this model's token price.
+              Price is the crowd's net verdict. It launches at $0 and moves{' '}
+              {money(perVote)} per net vote — the {money(voteRate)} base scaled ×{num(costMult, 2)} by
+              this model's token price. Dislikes pull it back down.
             </p>
 
             {/* The formula, as factor chips */}
             <div className="flex flex-wrap items-stretch gap-2 text-center">
-              <Factor label="Votes" value={num(liveVotes, 0)} sub="community" />
+              <Factor
+                label="Net votes"
+                value={`${net > 0 ? '+' : ''}${num(net, 0)}`}
+                sub={`${num(liveLikes, 0)} 👍 · ${num(liveDislikes, 0)} 👎`}
+              />
               <Op>×</Op>
               <Factor
                 label="Per vote"
@@ -230,9 +241,11 @@ export default function ModelDetail() {
               <Factor label="Price" value={money(livePrice)} accent />
             </div>
 
-            {liveVotes === 0 && (
+            {net <= 0 && (
               <div className="mt-3 rounded-lg border border-edge bg-ink/40 px-3 py-2 text-sm text-slate-400">
-                No votes yet — this model sits at {money(0)}. Be the first to value it.
+                {liveLikes === 0 && liveDislikes === 0
+                  ? `No votes yet — this model sits at ${money(0)}. Be the first to value it.`
+                  : `Net sentiment is ${num(net, 0)}, so the price floors at ${money(0)}.`}
               </div>
             )}
 
@@ -260,6 +273,8 @@ export default function ModelDetail() {
               </div>
             </div>
           </div>
+
+          <Benchmarks data={model.benchmarks} color={model.color} />
 
           <Comments slug={slug} />
         </div>
@@ -362,25 +377,45 @@ export default function ModelDetail() {
           </div>
 
           <div className="card p-5">
-            <div className="flex items-center gap-1.5 label mb-3">
-              <ChevronUp size={13} /> Community votes
-            </div>
-            <div className="flex items-center justify-between">
+            <div className="label mb-3">Community sentiment</div>
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="num text-3xl font-bold text-white">{num(liveVotes, 0)}</div>
-                <div className="text-xs text-slate-500">supporters · {money(livePrice)} value</div>
+                <div className="num text-3xl font-bold text-white">
+                  {net > 0 ? '+' : ''}
+                  {num(net, 0)}
+                </div>
+                <div className="text-xs text-slate-500">
+                  net · {model.approval != null ? `${model.approval}% approval` : 'no votes yet'}
+                </div>
               </div>
-              <VoteButton
+              <LikeDislike
                 slug={slug}
-                count={liveVotes}
-                voted={model.votedByMe}
-                onChange={(voted, count) =>
-                  setModel((mm) => ({ ...mm, votedByMe: voted, votes: count }))
+                likes={liveLikes}
+                dislikes={liveDislikes}
+                myVote={model.myVote}
+                onChange={(myVote, l, d) =>
+                  setModel((mm) => ({
+                    ...mm,
+                    myVote,
+                    likes: l,
+                    dislikes: d,
+                    approval: l + d ? Math.round((l / (l + d)) * 100) : null
+                  }))
                 }
               />
             </div>
+            {/* approval bar */}
+            {liveLikes + liveDislikes > 0 && (
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-down/30">
+                <div
+                  className="h-full rounded-full bg-up"
+                  style={{ width: `${(liveLikes / (liveLikes + liveDislikes)) * 100}%` }}
+                />
+              </div>
+            )}
             <p className="text-xs text-slate-500 mt-3">
-              Every vote adds {money(perVote)} to this model's price. Toggle yours anytime.
+              Each net vote moves the price {money(perVote)}. Like to push it up, dislike to pull it
+              down.
             </p>
           </div>
         </div>

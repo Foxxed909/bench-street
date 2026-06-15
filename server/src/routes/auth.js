@@ -5,7 +5,7 @@ import {
   verifyLogin,
   signToken,
   publicUser,
-  requireAuth
+  optionalAuth
 } from '../auth.js'
 
 const router = Router()
@@ -32,8 +32,10 @@ router.post('/login', (req, res) => {
   res.json({ token: signToken(user), user: publicUser(user) })
 })
 
-router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: publicUser(req.user) })
+// Returns the current user, or { user: null } when the token is missing/stale —
+// a 200 either way so an expired token doesn't spam the console with a 401.
+router.get('/me', optionalAuth, (req, res) => {
+  res.json({ user: req.user ? publicUser(req.user) : null })
 })
 
 export default router

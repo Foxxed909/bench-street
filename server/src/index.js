@@ -51,7 +51,11 @@ app.set('io', io)
 
 io.on('connection', (socket) => {
   const models = db
-    .prepare('SELECT id, slug, ticker, price, prev_close, vote_count AS votes FROM models')
+    .prepare(
+      `SELECT id, slug, ticker, price, prev_close,
+              like_count AS likes, dislike_count AS dislikes
+         FROM models`
+    )
     .all()
   socket.emit('snapshot', { t: Date.now(), models })
 })

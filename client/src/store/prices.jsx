@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { socket } from '../lib/socket.js'
 
-const PricesCtx = createContext({ prices: {}, history: {}, votes: {} })
+const PricesCtx = createContext({ prices: {}, history: {}, likes: {}, dislikes: {} })
 const MAX_POINTS = 48
 
 export function PricesProvider({ children }) {
   const [prices, setPrices] = useState({})
   const [history, setHistory] = useState({})
-  const [votes, setVotes] = useState({})
+  const [likes, setLikes] = useState({})
+  const [dislikes, setDislikes] = useState({})
 
   useEffect(() => {
     function apply(models) {
@@ -24,9 +25,14 @@ export function PricesProvider({ children }) {
         }
         return next
       })
-      setVotes((prev) => {
+      setLikes((prev) => {
         const next = { ...prev }
-        for (const m of models) if (m.votes != null) next[m.id] = m.votes
+        for (const m of models) if (m.likes != null) next[m.id] = m.likes
+        return next
+      })
+      setDislikes((prev) => {
+        const next = { ...prev }
+        for (const m of models) if (m.dislikes != null) next[m.id] = m.dislikes
         return next
       })
     }
@@ -41,7 +47,7 @@ export function PricesProvider({ children }) {
   }, [])
 
   return (
-    <PricesCtx.Provider value={{ prices, history, votes }}>{children}</PricesCtx.Provider>
+    <PricesCtx.Provider value={{ prices, history, likes, dislikes }}>{children}</PricesCtx.Provider>
   )
 }
 

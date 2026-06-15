@@ -1,5 +1,28 @@
 # Bench Street — Internal Notes
 
+## Likes/dislikes, models, benchmarks (v0.9.0)
+- **Net sentiment drives price:** `price = max(0, likes − dislikes) × perVoteValue`. `votes` table
+  gained a `value` column (+1 like / −1 dislike, one row per user/model). `models.like_count` +
+  `dislike_count` columns; `vote_count` kept = like_count for back-compat. `syncTallies(modelId)`
+  recomputes both from the votes table after each cast. `priceFor(net, tokenPrice)` floors at 0.
+- **Vote route** `POST /:slug/vote` now takes `{value: 1|-1}`: same stance toggles off, opposite
+  switches. Returns `{myVote, likes, dislikes, price}`. decorate() exposes likes/dislikes/net/
+  approval/myVote. Socket payloads carry `{likes, dislikes}` (was `votes`).
+- **Roster x-panded to 52:** `BASE_ROSTER` (original 22) + `TIER_MODELS` = `TIER_BASES` (gpt-5-5,
+  gpt-5-6, claude-fable-5, mythos-5, gemini-3-5-pro, grok-4-3) × `TIERS` (low/medium/high/xhigh/max).
+  Each tier scales apiPrice (×0.45…×2.4), elo, bench. Slugs like `gpt-5-5-max`. NOTE: tier models
+  have no PROVIDER_IDS mapping → curated apiPrice (no live OpenRouter price); only the original 22
+  show the "live" badge. Adding real OpenRouter ids later would make them live.
+- **Benchmarks:** `models.benchmarks` TEXT column = JSON `{BridgeBench, SWE-bench, GPQA, AIME, MMLU}`.
+  Seeded by `benchmarksFor()` (derives from each model's `bench` + per-bench offset + deterministic
+  `hashJitter(slug+key)` so varied but stable). BridgeBench is a real vibe-coding board (bridgebench.ai).
+  Client `Benchmarks.jsx` renders bars; ModelDetail passes `model.benchmarks`.
+- **Client:** `LikeDislike.jsx` (replaces VoteButton, now deleted), `Benchmarks.jsx`, prices store
+  carries `likes`/`dislikes` maps. `splitTier()` in format.js → tier badges. Floor sort `rated`,
+  MarketStats "Top rated" by net. `/auth/me` now optionalAuth → `{user:null}` 200 (no 401 spam).
+- **Icon/identity:** `client/public/icon.svg` (candlestick), `site.webmanifest`, favicon + OG tags
+  in index.html.
+
 ## Comments (v0.8.0)
 - `comments` table (id, model_id→models, user_id→users, body, created_at) + `idx_comments_model`.
   Created via `CREATE TABLE IF NOT EXISTS` in db.js (no reseed needed on existing DBs).
