@@ -27,10 +27,13 @@ export default function Floor() {
   const { user } = useAuth()
 
   function load() {
-    api.get('/models').then((d) => {
-      setModels(d.models)
-      setSignals(d.signals)
-    })
+    api
+      .get('/models')
+      .then((d) => {
+        setModels(d.models || [])
+        setSignals(d.signals || null)
+      })
+      .catch(() => {})
   }
   useEffect(load, [user])
 

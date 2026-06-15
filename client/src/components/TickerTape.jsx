@@ -9,7 +9,7 @@ export default function TickerTape() {
   const { prices } = usePrices()
 
   useEffect(() => {
-    api.get('/models').then((d) => setModels(d.models)).catch(() => {})
+    api.get('/models').then((d) => setModels(d.models || [])).catch(() => {})
   }, [])
 
   if (!models.length) return null
