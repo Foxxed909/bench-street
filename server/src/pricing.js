@@ -1,11 +1,18 @@
 import db from './db.js'
 
-// --- Index configuration ---------------------------------------------------
-// A model's "fundamental value" is a weighted blend of normalized real signals,
-// mapped onto a price band. These weights are the game's physics — tune freely.
-export const WEIGHTS = { elo: 0.40, usage: 0.30, bench: 0.20, dlprice: 0.10 }
+// --- Price model -----------------------------------------------------------
+// A model's "fundamental value" = blended input/output token cost ($/Mtok, live
+// from OpenRouter) × a quality factor (from LMArena ELO) × a multiplier. 100% real
+// token economics — no curated index. Tune PRICE_MULTIPLIER to set the band.
+export const PRICE_MULTIPLIER = 50
 export const PRICE_FLOOR = 10
-export const PRICE_CEIL = 1000
+export const PRICE_CEIL = 2500
+
+// Quality multiplier from ELO: ~0.5 (weak) … 2.0 (frontier), ~1.0 mid-pack.
+export function eloFactor(elo) {
+  if (elo == null) return 1
+  return Math.max(0.5, Math.min(2, (elo - 900) / 360))
+}
 
 const TICK_MS = 4000      // price tick cadence
 const THETA = 0.10        // mean-reversion strength per tick (pull toward target)
@@ -14,23 +21,6 @@ const THETA = 0.10        // mean-reversion strength per tick (pull toward targe
 // Each community vote adds a flat amount to a model's target price, on top of its
 // signal-derived fundamental. Price target = fundamental + (votes × VOTE_RATE).
 export const VOTE_RATE = 5
-
-// Min-max normalize a list of {id, v} to 0..1. Nulls map to the series minimum.
-function normalize(rows, pick, { invert = false } = {}) {
-  const vals = rows.map(pick).filter((v) => v != null && !Number.isNaN(v))
-  if (vals.length === 0) return new Map(rows.map((r) => [r.id, 0.5]))
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
-  const span = max - min || 1
-  const out = new Map()
-  for (const r of rows) {
-    const raw = pick(r)
-    let n = raw == null || Number.isNaN(raw) ? 0 : (raw - min) / span
-    if (invert) n = 1 - n
-    out.set(r.id, n)
-  }
-  return out
-}
 
 // Pull the latest signal snapshot for every model.
 function latestSignals() {
@@ -49,40 +39,23 @@ function latestSignals() {
 }
 
 // Recompute every model's fundamental value from its latest signals.
-// Returns a Map(modelId -> fundamental).
+// fundamental = blended token price ($/Mtok) × quality(ELO) × multiplier,
+// clamped to [PRICE_FLOOR, PRICE_CEIL]. Returns a Map(modelId -> fundamental).
 export function recomputeFundamentals() {
   const rows = latestSignals()
   if (rows.length === 0) return new Map()
-
-  const eloN = normalize(rows, (r) => r.elo)
-  const usageN = normalize(rows, (r) => r.usage)
-  const benchN = normalize(rows, (r) => r.bench)
-  // Downloads on a log scale (huge range); only meaningful for open models.
-  const dlN = normalize(
-    rows,
-    (r) => (r.downloads ? Math.log10(r.downloads + 1) : null)
-  )
-  // Cheaper API price is "better", so invert.
-  const priceN = normalize(rows, (r) => r.api_price, { invert: true })
 
   const update = db.prepare('UPDATE models SET fundamental = ? WHERE id = ?')
   const result = new Map()
 
   const apply = db.transaction(() => {
     for (const r of rows) {
-      // The dl/price leg blends accessibility: open models weight downloads,
-      // closed models lean entirely on price.
-      const dlprice = r.open_source
-        ? 0.6 * dlN.get(r.id) + 0.4 * priceN.get(r.id)
-        : priceN.get(r.id)
-
-      const score =
-        WEIGHTS.elo * eloN.get(r.id) +
-        WEIGHTS.usage * usageN.get(r.id) +
-        WEIGHTS.bench * benchN.get(r.id) +
-        WEIGHTS.dlprice * dlprice
-
-      const fundamental = +(PRICE_FLOOR + score * (PRICE_CEIL - PRICE_FLOOR)).toFixed(2)
+      const tokenPrice = r.api_price || 0
+      const raw = tokenPrice * eloFactor(r.elo) * PRICE_MULTIPLIER
+      const fundamental = +Math.max(
+        PRICE_FLOOR,
+        Math.min(PRICE_CEIL, raw)
+      ).toFixed(2)
       update.run(fundamental, r.id)
       result.set(r.id, fundamental)
     }

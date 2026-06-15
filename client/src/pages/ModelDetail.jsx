@@ -17,12 +17,14 @@ import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import VoteButton from '../components/VoteButton.jsx'
 import { money, num, pct, compact, upDown } from '../lib/format.js'
 
+// Live signals shown for transparency. ELO + API price feed the price formula;
+// the rest are context.
 const SIGNALS = [
-  { key: 'elo', label: 'LMArena ELO', weight: 40, fmt: (v) => num(v, 0) },
-  { key: 'usage', label: 'Usage share', weight: 30, fmt: (v) => `${num(v, 1)}%` },
-  { key: 'bench', label: 'Benchmarks', weight: 20, fmt: (v) => `${num(v, 0)}/100` },
-  { key: 'downloads', label: 'HF downloads', weight: 5, fmt: (v) => compact(v) },
-  { key: 'apiPrice', label: 'API $/Mtok', weight: 5, fmt: (v) => money(v) }
+  { key: 'apiPrice', label: 'API $/Mtok', fmt: (v) => money(v), drives: true },
+  { key: 'elo', label: 'LMArena ELO', fmt: (v) => num(v, 0), drives: true },
+  { key: 'usage', label: 'Usage share', fmt: (v) => `${num(v, 1)}%` },
+  { key: 'bench', label: 'Benchmarks', fmt: (v) => `${num(v, 0)}/100` },
+  { key: 'downloads', label: 'HF downloads', fmt: (v) => compact(v) }
 ]
 
 export default function ModelDetail() {
@@ -35,6 +37,7 @@ export default function ModelDetail() {
   const [chart, setChart] = useState([])
   const [position, setPosition] = useState(null)
   const [voteRate, setVoteRate] = useState(5)
+  const [priceMultiplier, setPriceMultiplier] = useState(50)
   const [err, setErr] = useState('')
   const [shares, setShares] = useState(1)
   const [msg, setMsg] = useState(null)
@@ -56,6 +59,7 @@ export default function ModelDetail() {
       .then((d) => {
         setModel(d.model)
         setVoteRate(d.voteRate ?? 5)
+        setPriceMultiplier(d.priceMultiplier ?? 50)
         setChart(d.candles.map((c) => ({ t: c.t * 1000, price: c.close })))
         seeded.current = true
       })
@@ -205,36 +209,67 @@ export default function ModelDetail() {
             </div>
             <p className="text-xs text-slate-500 mt-2">
               <span className="text-accent">— —</span> fundamental value {money(model.fundamental)} ·
-              the signal-derived fair price the market pulls back toward.
+              the cost × quality fair price the market pulls back toward.
             </p>
           </div>
 
-          {/* Signal stat cards */}
+          {/* Price breakdown */}
           <div className="card p-5">
             <h2 className="text-sm font-semibold text-white mb-1">Why this price</h2>
             <p className="text-xs text-slate-500 mb-4">
-              Price = signal-derived fundamental + community votes ({money(voteRate)} each).
+              A model is worth its token economics × its quality, then the crowd adds
+              conviction. Fundamental = blended API price ($/Mtok) × quality (ELO) ×{' '}
+              {priceMultiplier}.
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {SIGNALS.map((s) => {
-                const v = model.signals[s.key]
-                if (v == null) return null
-                return (
-                  <div key={s.key} className="bg-ink/60 border border-edge rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] text-slate-400">{s.label}</span>
-                      <span className="text-[10px] text-slate-600 font-mono">{s.weight}%</span>
-                    </div>
-                    <div className="text-lg font-mono text-white">{s.fmt(v)}</div>
-                  </div>
-                )
-              })}
+
+            {/* The formula, as factor chips */}
+            <div className="flex flex-wrap items-stretch gap-2 text-center">
+              <Factor
+                label="API $/Mtok"
+                value={model.tokenPrice != null ? money(model.tokenPrice) : '—'}
+              />
+              <Op>×</Op>
+              <Factor
+                label="Quality (ELO)"
+                value={model.eloFactor != null ? `${num(model.eloFactor, 2)}×` : '1.00×'}
+                sub={model.signals.elo != null ? num(model.signals.elo, 0) : null}
+              />
+              <Op>×</Op>
+              <Factor label="Multiplier" value={`${priceMultiplier}`} />
+              <Op>=</Op>
+              <Factor label="Fundamental" value={money(model.fundamental)} accent />
             </div>
+
             <div className="mt-3 flex items-center justify-between rounded-lg border border-up/25 bg-up/5 px-3 py-2 text-sm">
               <span className="text-slate-300">
-                Fundamental {money(model.fundamental)} + {num(liveVotes, 0)} votes × {money(voteRate)}
+                Fundamental {money(model.fundamental)} + {num(liveVotes, 0)} votes ×{' '}
+                {money(voteRate)}
               </span>
               <span className="num font-semibold text-up">+{money(liveVotes * voteRate)}</span>
+            </div>
+
+            {/* Live signals reference */}
+            <div className="mt-5 pt-4 border-t border-edge">
+              <div className="label mb-3">Live signals</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {SIGNALS.map((s) => {
+                  const v = model.signals[s.key]
+                  if (v == null) return null
+                  return (
+                    <div key={s.key} className="bg-ink/60 border border-edge rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] text-slate-400">{s.label}</span>
+                        {s.drives && (
+                          <span className="text-[9px] uppercase tracking-wide text-accent/80 font-mono">
+                            drives price
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-lg font-mono text-white">{s.fmt(v)}</div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -349,5 +384,25 @@ export default function ModelDetail() {
         </div>
       </div>
     </div>
+  )
+}
+
+function Factor({ label, value, sub, accent }) {
+  return (
+    <div
+      className={`flex-1 min-w-[88px] rounded-lg border p-3 ${
+        accent ? 'border-accent/40 bg-accent/5' : 'border-edge bg-ink/60'
+      }`}
+    >
+      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={`font-mono text-lg ${accent ? 'text-accent' : 'text-white'}`}>{value}</div>
+      {sub != null && <div className="text-[10px] text-slate-600 font-mono">{sub}</div>}
+    </div>
+  )
+}
+
+function Op({ children }) {
+  return (
+    <div className="grid place-items-center text-slate-600 font-mono text-lg px-0.5">{children}</div>
   )
 }

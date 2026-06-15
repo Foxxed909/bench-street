@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import db from '../db.js'
-import { WEIGHTS, VOTE_RATE } from '../pricing.js'
+import { PRICE_MULTIPLIER, VOTE_RATE, eloFactor } from '../pricing.js'
 import { signalsStatus } from '../ingest.js'
 import { optionalAuth, requireAuth } from '../auth.js'
 
@@ -20,6 +20,8 @@ function decorate(m, votedByMe) {
     price: m.price,
     prevClose: m.prev_close,
     fundamental: m.fundamental,
+    tokenPrice: m.api_price ?? null,
+    eloFactor: m.elo != null ? +eloFactor(m.elo).toFixed(2) : null,
     votes: m.vote_count || 0,
     votedByMe: !!votedByMe,
     liveSignals: !!(m.openrouter_id || m.hf_id),
@@ -80,7 +82,12 @@ router.get('/:slug', optionalAuth, (req, res) => {
     .all(m.id)
     .reverse()
 
-  res.json({ model: decorate(m, votedByMe), candles, weights: WEIGHTS, voteRate: VOTE_RATE })
+  res.json({
+    model: decorate(m, votedByMe),
+    candles,
+    priceMultiplier: PRICE_MULTIPLIER,
+    voteRate: VOTE_RATE
+  })
 })
 
 // Toggle the signed-in user's vote for a model. One vote per user per model.

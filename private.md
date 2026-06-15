@@ -1,6 +1,22 @@
 # Bench Street — Internal Notes
 
-## Architecture decisions
+## Pricing (current — v0.6.0, Cost × quality)
+- **Fundamental = `api_price × eloFactor(elo) × PRICE_MULTIPLIER`**, clamped
+  `[PRICE_FLOOR=10, PRICE_CEIL=2500]`. `PRICE_MULTIPLIER=50`. See `recomputeFundamentals()` in
+  `pricing.js`. `api_price` is the live blended OpenRouter $/Mtok (0.75·prompt + 0.25·completion).
+- **`eloFactor(elo)` = clamp(0.5, 2.0, (elo−900)/360)`** — quality multiplier; null ELO → 1.0.
+- **Tick target = `fundamental + vote_count × VOTE_RATE($5)`**; price mean-reverts
+  `price += THETA(0.10)·(target−price) + volatility·price·gaussian()`, soft-banded to
+  `[0.8·target, 1.2·target]`, floored at $1. tick=4s.
+- Retired: the min-max weighted signal index (`WEIGHTS`, `normalize()`) **and** the trade-demand
+  term. `models.demand` column is dormant. Removing the index dropped usage/bench/downloads from
+  the price math — they're now context-only signals (still ingested + shown).
+- One very expensive model (o4 → gpt-5.2-pro, ~$58/Mtok live) pins the $2500 ceiling. Accept as
+  "priciest model = priciest stock"; raise CEIL or lower MULTIPLIER if it needs more headroom.
+- `routes/models.js` decorate() now exposes `tokenPrice` + `eloFactor`; detail returns
+  `priceMultiplier`. `ModelDetail.jsx` "Why this price" renders the formula as factor chips.
+
+## Architecture decisions (historical — superseded by the section above)
 - **Index mode, not order book.** Player trades don't set price directly; they feed a
   *demand* term that bends the price target. Keeps the market un-manipulable by a single
   whale while still letting flow move prices. (User asked for "voting moves worth" → this.)

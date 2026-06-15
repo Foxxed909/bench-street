@@ -1,5 +1,18 @@
 # Bench Street — Public Changelog
 
+## v0.6.0 — Cost × quality pricing (2026-06-15)
+
+### Changes
+- **New base price formula.** A model's fundamental is now its **token economics × its
+  quality**: `blended API price ($/Mtok) × quality(ELO) × multiplier`, clamped to $10–$2500.
+  Pricier, higher-rated frontier models trade richer; cheap small models trade lower. Replaces
+  the old weighted signal index.
+- **Fresh start.** Wiped all placeholder/runtime data — prices, 24h baselines, votes, and test
+  accounts all reset to zero. Prices now build up purely from live signals and real votes.
+- Model pages explain the price as factor chips: *API $/Mtok × quality(ELO) × multiplier =
+  fundamental*, then *+ votes × $5*. Live signals are shown for transparency, with the two that
+  drive price (API price, ELO) badged.
+
 ## v0.5.0 — Votes drive the price (2026-06-15)
 
 ### Features
