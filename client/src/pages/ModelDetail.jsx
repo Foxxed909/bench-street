@@ -7,6 +7,7 @@ import { usePrices } from '../store/prices.jsx'
 import { useAuth } from '../store/auth.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import VoteButton from '../components/VoteButton.jsx'
+import Comments from '../components/Comments.jsx'
 import { money, num, pct, compact, upDown } from '../lib/format.js'
 
 // Live signals shown for transparency. API price scales each vote's value; the
@@ -259,6 +260,8 @@ export default function ModelDetail() {
               </div>
             </div>
           </div>
+
+          <Comments slug={slug} />
         </div>
 
         {/* Trade ticket + flow */}

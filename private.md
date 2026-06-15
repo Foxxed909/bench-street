@@ -1,5 +1,13 @@
 # Bench Street — Internal Notes
 
+## Comments (v0.8.0)
+- `comments` table (id, model_id→models, user_id→users, body, created_at) + `idx_comments_model`.
+  Created via `CREATE TABLE IF NOT EXISTS` in db.js (no reseed needed on existing DBs).
+- Routes in `routes/models.js`: `GET /:slug/comments` (optionalAuth → adds `mine`), `POST /:slug/comments`
+  (requireAuth, trims, 1–500 chars), `DELETE /:slug/comments/:id` (author or admin). Newest first, LIMIT 200.
+- Client: `components/Comments.jsx` (textarea + char counter, optimistic add/remove, avatar + `ago()`),
+  mounted in ModelDetail's left column under "Why this price". `api.del()` added to lib/api.js.
+
 ## Pricing (current — v0.7.0, live from zero / votes set price)
 - **`price = vote_count × perVoteValue`**, `perVoteValue = VOTE_RATE($5) × costFactor`,
   `costFactor = clamp(0.5, 2.0, api_price ÷ 5)`. Zero votes → **$0** for every model. See

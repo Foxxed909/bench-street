@@ -1,5 +1,13 @@
 # Bench Street — Public Changelog
 
+## v0.8.0 — Comments on every model (2026-06-15)
+
+### Features
+- **Discussion on each model page.** Signed-in users can post comments; everyone can read them.
+- Comments show the author and a relative timestamp, newest first.
+- You can delete your own comments (admins can remove any); a live character counter caps posts
+  at 500 chars.
+
 ## v0.7.0 — Live from zero: votes set the price (2026-06-15)
 
 ### Changes

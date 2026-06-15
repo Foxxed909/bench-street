@@ -115,4 +115,62 @@ router.post('/:slug/vote', requireAuth, (req, res) => {
   res.json({ ok: true, voted, votes, price })
 })
 
+const COMMENT_MAX = 500
+
+function commentRow(c, userId) {
+  return {
+    id: c.id,
+    body: c.body,
+    username: c.username,
+    createdAt: c.created_at,
+    mine: !!userId && c.user_id === userId
+  }
+}
+
+// List a model's comments, newest first.
+router.get('/:slug/comments', optionalAuth, (req, res) => {
+  const m = db.prepare('SELECT id FROM models WHERE slug = ?').get(req.params.slug)
+  if (!m) return res.status(404).json({ error: 'model not found' })
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.body, c.user_id, c.created_at, u.username
+         FROM comments c JOIN users u ON u.id = c.user_id
+        WHERE c.model_id = ? ORDER BY c.created_at DESC, c.id DESC LIMIT 200`
+    )
+    .all(m.id)
+  res.json({ comments: rows.map((c) => commentRow(c, req.user?.id)) })
+})
+
+// Post a comment on a model.
+router.post('/:slug/comments', requireAuth, (req, res) => {
+  const m = db.prepare('SELECT id FROM models WHERE slug = ?').get(req.params.slug)
+  if (!m) return res.status(404).json({ error: 'model not found' })
+  const body = String(req.body?.body || '').trim()
+  if (!body) return res.status(400).json({ error: 'comment cannot be empty' })
+  if (body.length > COMMENT_MAX) {
+    return res.status(400).json({ error: `comment too long (max ${COMMENT_MAX})` })
+  }
+  const info = db
+    .prepare('INSERT INTO comments (model_id, user_id, body, created_at) VALUES (?, ?, ?, ?)')
+    .run(m.id, req.user.id, body, new Date().toISOString())
+  const c = db
+    .prepare(
+      `SELECT c.id, c.body, c.user_id, c.created_at, u.username
+         FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?`
+    )
+    .get(info.lastInsertRowid)
+  res.status(201).json({ comment: commentRow(c, req.user.id) })
+})
+
+// Delete a comment (author or admin).
+router.delete('/:slug/comments/:id', requireAuth, (req, res) => {
+  const c = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id)
+  if (!c) return res.status(404).json({ error: 'comment not found' })
+  if (c.user_id !== req.user.id && !req.user.is_admin) {
+    return res.status(403).json({ error: 'not your comment' })
+  }
+  db.prepare('DELETE FROM comments WHERE id = ?').run(c.id)
+  res.json({ ok: true })
+})
+
 export default router

@@ -145,11 +145,21 @@ db.exec(`
     PRIMARY KEY (user_id, model_id)
   );
 
+  -- Free-text comments users leave on a model's page.
+  CREATE TABLE IF NOT EXISTS comments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id   INTEGER NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_signals_model ON model_signals(model_id, captured_at);
   CREATE INDEX IF NOT EXISTS idx_candles_model ON price_candles(model_id, t);
   CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_battlebets_user ON battle_bets(user_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_votes_model ON votes(model_id);
+  CREATE INDEX IF NOT EXISTS idx_comments_model ON comments(model_id, created_at);
 `)
 
 // --- Lightweight migrations (additive columns on existing DBs) --------------
