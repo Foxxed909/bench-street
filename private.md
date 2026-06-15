@@ -1,5 +1,31 @@
 # Bench Street — Internal Notes
 
+## Quality opening line + design overhaul (v1.3.0) — SHIPPED 2026-06-15
+Driven by a hands-on tester pass (Playwright: signup→vote→trade→all tabs→mobile). Top finding was the
+all-$0 dead board; user chose "seed a quality opening line" via AskUserQuestion.
+- **Opening line (#1).** New `models.base_votes` col (db.js). seed.js: `baseVotes = active ? max(0,
+  round(bench−62)) : 0`, upserted idempotently. pricing.js: net = `base_votes + likes − dislikes` in
+  recomputePrices + pushModelPrice (+ priceInputs SELECT). routes/models.js exposes `baseVotes`.
+  Verified: Opus-high $330 → Phi-4 $22.50, **0 active models at $0**, avg ~$129. Narrative updated
+  (Floor intro, footer, ModelDetail "Why this price" → "opening + votes" chips). This REVERSES the old
+  "every model starts at $0" rule — deliberate, user's call.
+- **#2 index** — MarketStats BSI averages priced (price>0) tradeable models only.
+- **#3 effort order** — Floor SORTS.new tiebreak: releasedAt desc → name asc → EFFORT_ORDER (low<med<high).
+- **#4 Grok ticker** — grok-4-3-heavy `GRK43H`→`GRK43HV` (collided with grok-4-3-high `GROK43H`).
+- **#6 Arena** — Arena.jsx splits open (lead) vs settled (capped 6 under "Recent results"); battles.js
+  TARGET_OPEN 4→6, gen durations 5–14→20–50 min; seed battles bumped to 25–65 min.
+- **#7 24h%** — resolved by opening line (prev_close>0 now, so intraday moves show).
+- **#8 plural** — Floor sector chip "model"/"models".
+- **#9 mobile nav** — Nav.jsx hamburger + dropdown (`md:hidden`), shared LINKS array; wallet stays in bar.
+- **#10 admin** — db.js only auto-promotes `ADMIN_USERNAME` (default 'sylvie'), never a random first signup.
+- **Design overhaul (user req: kill void-black, fix vibe-coded borders, add skeuomorphism, bento grid).**
+  tailwind: `ink` #07080c→#0a0b16 (indigo), panel/panel2/edge bluer, `shadow-raise`/`shadow-sunken`,
+  `bg-panel-raise`. index.css: body indigo + violet/blue/gold radial auroras; `.card` skeuomorphic
+  (translucent white edge instead of hard border, top-lit gradient, layered shadow); `.input` recessed
+  (inset shadow); `.lift` deeper hover. MarketStats rebuilt as a bento (BSI hero spans 2×2 + 4 equal
+  tiles: Top mover, Top rated, Advancing, Declining). Predictions/Arena inherit the theme; betting
+  layout untouched ("not bets").
+
 ## Effort-tier models + terminal design pass (v1.2.0) — SHIPPED 2026-06-15
 - **Effort tiers.** `seed.js`: `REASONING` set (17 base slugs) + `EFFORTS` [low ×0.6 / −22 elo / −5 bench,
   medium ×1.0, high ×1.9 / +12 / +3] → `expandEfforts()` builds ROSTER (32 base → **66**). `medium` KEEPS

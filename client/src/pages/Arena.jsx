@@ -33,6 +33,15 @@ export default function Arena() {
     }
   }, [user])
 
+  const onBet = () => {
+    refresh()
+    load()
+  }
+  // Open matchups lead; settled ones are capped to a short "recent results" strip
+  // so the Arena reads as live, not a graveyard of finished fights.
+  const openBattles = battles.filter((b) => b.status !== 'settled')
+  const settled = battles.filter((b) => b.status === 'settled').slice(0, 6)
+
   return (
     <div className="space-y-6 fade-up">
       <div>
@@ -45,20 +54,34 @@ export default function Arena() {
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {battles.map((b, i) => (
-          <div key={b.id} className="fade-up" style={{ animationDelay: `${i * 50}ms` }}>
-            <BattleCard
-              battle={b}
-              user={user}
-              onChange={() => {
-                refresh()
-                load()
-              }}
-            />
+      {openBattles.length > 0 ? (
+        <div className="grid md:grid-cols-2 gap-4">
+          {openBattles.map((b, i) => (
+            <div key={b.id} className="fade-up" style={{ animationDelay: `${i * 50}ms` }}>
+              <BattleCard battle={b} user={user} onChange={onBet} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="card p-8 text-center text-sm text-slate-500">
+          Spinning up fresh matchups… new battles open every few minutes.
+        </div>
+      )}
+
+      {settled.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="label flex items-center gap-1.5">
+            <Trophy size={12} /> Recent results
+          </h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {settled.map((b, i) => (
+              <div key={b.id} className="fade-up" style={{ animationDelay: `${i * 40}ms` }}>
+                <BattleCard battle={b} user={user} onChange={onBet} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {user && mine.length > 0 && <MyBattles positions={mine} />}
     </div>

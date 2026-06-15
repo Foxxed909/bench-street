@@ -44,7 +44,7 @@ const VARIANTS = [
   { slug: 'gpt-5-6',          name: 'GPT-5.6',          company: 'OpenAI',    ticker: 'GPT56',  open: 0, color: '#10a37f', elo: 1420, usage: 0, bench: 94, downloads: null, apiPrice: 8.0,  vol: 0.012, released: null, status: 'upcoming', statusNote: UPCOMING_NOTE },
   { slug: 'gpt-5-6-pro',      name: 'GPT-5.6 Pro',      company: 'OpenAI',    ticker: 'GPT56P', open: 0, color: '#0e8f6f', elo: 1432, usage: 0, bench: 96, downloads: null, apiPrice: 16.0, vol: 0.013, released: null, status: 'upcoming', statusNote: UPCOMING_NOTE },
   { slug: 'grok-4-3',         name: 'Grok 4.3',         company: 'xAI',       ticker: 'GROK43', open: 0, color: '#5b6470', elo: 1398, usage: 0, bench: 91, downloads: null, apiPrice: 6.5,  vol: 0.013, released: '2026-05-01' },
-  { slug: 'grok-4-3-heavy',   name: 'Grok 4.3 Heavy',   company: 'xAI',       ticker: 'GRK43H', open: 0, color: '#7a828d', elo: 1414, usage: 0, bench: 93, downloads: null, apiPrice: 13.0, vol: 0.014, released: '2026-05-01' },
+  { slug: 'grok-4-3-heavy',   name: 'Grok 4.3 Heavy',   company: 'xAI',       ticker: 'GRK43HV', open: 0, color: '#7a828d', elo: 1414, usage: 0, bench: 93, downloads: null, apiPrice: 13.0, vol: 0.014, released: '2026-05-01' },
   { slug: 'gemini-3-5-pro',   name: 'Gemini 3.5 Pro',   company: 'Google',    ticker: 'GEM35P', open: 0, color: '#4285f4', elo: 1412, usage: 0, bench: 93, downloads: null, apiPrice: 7.5,  vol: 0.010, released: '2026-04-15' },
   { slug: 'gemini-3-5-flash', name: 'Gemini 3.5 Flash', company: 'Google',    ticker: 'GEM35F', open: 0, color: '#3b78e0', elo: 1352, usage: 0, bench: 86, downloads: null, apiPrice: 0.6,  vol: 0.011, released: '2026-04-15' },
   { slug: 'claude-fable-5',   name: 'Claude Fable 5',   company: 'Anthropic', ticker: 'FABL5',  open: 0, color: '#d97757', elo: 1440, usage: 0, bench: 96, downloads: null, apiPrice: 20.0, vol: 0.010, released: '2026-06-09', status: 'suspended', statusNote: SUSPENDED_NOTE },
@@ -259,10 +259,10 @@ const MARKETS = [
 // Head-to-head battles. closesInMin from seed time; the auto-settle loop resolves them
 // by Elo win-probability when they close (admin can force-settle sooner).
 const BATTLES = [
-  { a: 'gpt-5-2', b: 'claude-opus-4-8', category: 'Reasoning', poolA: 1200, poolB: 1100, closesInMin: 9 },
-  { a: 'gemini-3-pro', b: 'grok-4', category: 'Coding', poolA: 900, poolB: 700, closesInMin: 6 },
-  { a: 'deepseek-r2', b: 'o4', category: 'Math', poolA: 600, poolB: 800, closesInMin: 13 },
-  { a: 'claude-sonnet-4-6', b: 'gpt-5-mini', category: 'Creative writing', poolA: 1000, poolB: 1000, closesInMin: 4 }
+  { a: 'gpt-5-2', b: 'claude-opus-4-8', category: 'Reasoning', poolA: 1200, poolB: 1100, closesInMin: 35 },
+  { a: 'gemini-3-pro', b: 'grok-4', category: 'Coding', poolA: 900, poolB: 700, closesInMin: 50 },
+  { a: 'deepseek-r2', b: 'o4', category: 'Math', poolA: 600, poolB: 800, closesInMin: 65 },
+  { a: 'claude-sonnet-4-6', b: 'gpt-5-mini', category: 'Creative writing', poolA: 1000, poolB: 1000, closesInMin: 25 }
 ]
 
 export function seedDatabase({ force = false } = {}) {
@@ -276,14 +276,15 @@ export function seedDatabase({ force = false } = {}) {
   {
     const insModel = db.prepare(`
       INSERT INTO models (slug, name, company, ticker, open_source, color, volatility,
-                          status, status_note, released_at, effort, created_at)
+                          status, status_note, released_at, effort, base_votes, created_at)
       VALUES (@slug, @name, @company, @ticker, @open, @color, @vol,
-              @status, @statusNote, @released, @effort, @created_at)
+              @status, @statusNote, @released, @effort, @baseVotes, @created_at)
       ON CONFLICT(slug) DO UPDATE SET
         name = excluded.name, company = excluded.company, ticker = excluded.ticker,
         open_source = excluded.open_source, color = excluded.color, volatility = excluded.volatility,
         status = excluded.status, status_note = excluded.status_note,
-        released_at = excluded.released_at, effort = excluded.effort
+        released_at = excluded.released_at, effort = excluded.effort,
+        base_votes = excluded.base_votes
     `)
     const insSignal = db.prepare(`
       INSERT INTO model_signals (model_id, elo, usage, bench, downloads, api_price, captured_at)
@@ -294,12 +295,18 @@ export function seedDatabase({ force = false } = {}) {
     const signalCount = db.prepare('SELECT COUNT(*) AS n FROM model_signals WHERE model_id = ?')
     db.transaction(() => {
       for (const m of ROSTER) {
+        // Opening line: tradeable models open at a price ranked by their benchmark
+        // standing (≈ bench − 62 net votes); suspended/upcoming stay at $0. Real
+        // community votes add to this baseline from there.
+        const active = !m.status || m.status === 'active'
+        const baseVotes = active ? Math.max(0, Math.round((m.bench ?? 70) - 62)) : 0
         insModel.run({
           ...m,
           status: m.status || 'active',
           statusNote: m.statusNote || null,
           released: m.released || null,
           effort: m.effort || null,
+          baseVotes,
           created_at: now
         })
         // On upsert-conflict lastInsertRowid is unreliable, so resolve id by slug.
@@ -404,8 +411,9 @@ export function seedDatabase({ force = false } = {}) {
     })()
   }
 
-  // Price = votes × per-vote value → $0 on a fresh roster. prev_close tracks it
-  // so day-one 24h reads 0%.
+  // Price = (opening line + net votes) × per-vote value. The opening line gives
+  // each tradeable model a quality-ranked starting price; prev_close tracks it so
+  // day-one 24h reads 0%.
   recomputePrices()
   db.prepare('UPDATE models SET prev_close = price').run()
 

@@ -10,16 +10,21 @@ import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import LikeDislike from '../components/LikeDislike.jsx'
 import WatchStar from '../components/WatchStar.jsx'
 import MarketStats from '../components/MarketStats.jsx'
-import { pct, upDown, ago, isNew, effortLabel, money, num } from '../lib/format.js'
+import { pct, upDown, ago, isNew, effortLabel, EFFORT_ORDER, money, num } from '../lib/format.js'
 
 const ts = (d) => (d ? new Date(d).getTime() || 0 : 0)
 const SORTS = {
   // Upcoming (not-yet-released) models float to the very top, then newest by date.
+  // Same-family effort variants stay adjacent and ordered low → medium → high.
   new: (a, b) => {
     const ua = a.status === 'upcoming' ? 1 : 0
     const ub = b.status === 'upcoming' ? 1 : 0
     if (ua !== ub) return ub - ua
-    return ts(b.releasedAt) - ts(a.releasedAt)
+    const d = ts(b.releasedAt) - ts(a.releasedAt)
+    if (d) return d
+    const n = a.name.localeCompare(b.name)
+    if (n) return n
+    return (EFFORT_ORDER[a.effort] ?? 1) - (EFFORT_ORDER[b.effort] ?? 1)
   },
   price: (a, b) => b.livePrice - a.livePrice,
   gainers: (a, b) => b.liveChangePct - a.liveChangePct,
@@ -295,7 +300,7 @@ export default function Floor() {
                 </div>
                 <div className="num text-sm text-white">{money(l.total)}</div>
                 <div className="text-[10px] text-slate-500">
-                  {l.count} models · {l.net > 0 ? '+' : ''}
+                  {l.count} model{l.count === 1 ? '' : 's'} · {l.net > 0 ? '+' : ''}
                   {num(l.net, 0)} net
                 </div>
               </button>
@@ -431,9 +436,9 @@ function IntroBanner({ user }) {
         <div className="text-sm">
           <div className="font-semibold text-white">Welcome to Bench Street</div>
           <p className="mt-0.5 text-slate-300">
-            Trade AI models like stocks — with play money. Every model starts at{' '}
-            <span className="font-mono text-white">$0</span> and moves on the crowd's votes: like 👍
-            to push it up, dislike 👎 to pull it down. Once a model has a price, you can buy and sell.
+            Trade AI models like stocks — with play money. Each model opens at a price set by its
+            benchmark standing, then moves on the crowd's votes: like 👍 to push it up, dislike 👎 to
+            pull it down. Buy low, sell high.
           </p>
           {!user && (
             <Link to="/login" className="btn-primary mt-3 inline-block">

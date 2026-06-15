@@ -17,11 +17,13 @@ body {
   /* Tabular figures everywhere so columns of numbers stay vertically aligned —
      essential in a number-dense trading grid. */
   font-variant-numeric: tabular-nums;
-  background-color: #07080c;
-  /* Two soft corner auroras over near-black — calm, premium, not busy. */
+  background-color: #0a0b16;
+  /* Deep indigo canvas with violet + blue auroras (no void-black), and a faint gold
+     wash low so the brand color still breathes. */
   background-image:
-    radial-gradient(900px 480px at 92% -10%, rgba(240, 192, 78, 0.10), transparent 62%),
-    radial-gradient(820px 460px at -6% -8%, rgba(39, 209, 139, 0.07), transparent 58%);
+    radial-gradient(1100px 620px at 88% -14%, rgba(139, 92, 246, 0.18), transparent 60%),
+    radial-gradient(960px 560px at -8% -6%, rgba(56, 120, 246, 0.13), transparent 58%),
+    radial-gradient(900px 700px at 50% 118%, rgba(240, 192, 78, 0.05), transparent 62%);
   background-attachment: fixed;
   min-height: 100vh;
 }
@@ -96,9 +98,15 @@ input[type='number']::-webkit-outer-spin-button {
 
 @layer components {
   .input {
-    @apply w-full rounded-lg border border-edge bg-ink/60 px-3 py-2 text-sm text-white
-           outline-none transition-colors placeholder:text-slate-600
-           focus:border-accent/70 focus:ring-1 focus:ring-accent/30;
+    @apply w-full rounded-lg px-3 py-2 text-sm text-white outline-none transition
+           placeholder:text-slate-600 focus:border-accent/70;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.26);
+    /* Recessed/sunken so fields read as wells you type into. */
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  }
+  .input:focus {
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(240, 192, 78, 0.16);
   }
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold
@@ -127,23 +135,28 @@ input[type='number']::-webkit-outer-spin-button {
            hover:border-slate-500 hover:bg-white/[0.03] hover:text-white disabled:opacity-40;
   }
   .card {
-    @apply rounded-2xl border border-edge;
+    @apply rounded-2xl;
+    /* Soft translucent edge (no hard 1px line) + a top-lit gradient + layered
+       shadows = a tactile, raised surface rather than a flat bordered box. */
+    border: 1px solid rgba(255, 255, 255, 0.06);
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0)),
-      #0b0f17;
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.008) 42%, rgba(0, 0, 0, 0.12)),
+      #13152a;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.045),
-      0 24px 60px -36px rgba(0, 0, 0, 0.9);
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 1px 1px rgba(0, 0, 0, 0.4),
+      0 18px 42px -24px rgba(0, 0, 0, 0.9);
   }
   .lift {
     @apply transition duration-200;
   }
   .lift:hover {
     transform: translateY(-2px);
-    border-color: #2c374b;
+    border-color: rgba(255, 255, 255, 0.12);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      0 30px 70px -36px rgba(0, 0, 0, 0.95);
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 2px 2px rgba(0, 0, 0, 0.45),
+      0 28px 56px -26px rgba(0, 0, 0, 0.95);
   }
   .pill {
     @apply rounded text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5;

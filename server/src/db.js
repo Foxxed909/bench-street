@@ -186,6 +186,9 @@ ensureColumn('models', 'status_note', 'status_note TEXT')
 ensureColumn('models', 'released_at', 'released_at TEXT')
 // Reasoning-effort tier ('low' | 'medium' | 'high') for reasoning models; null otherwise.
 ensureColumn('models', 'effort', 'effort TEXT')
+// Quality-based opening line: a starting net-vote equivalent so a model opens at a
+// sensible price (ranked by its benchmark standing) instead of $0. Real votes add on top.
+ensureColumn('models', 'base_votes', 'base_votes INTEGER NOT NULL DEFAULT 0')
 // Carry any legacy like tally forward into like_count once.
 db.exec('UPDATE models SET like_count = vote_count WHERE like_count = 0 AND vote_count > 0')
 // Live signal-feed mapping (OpenRouter / HuggingFace ids).
@@ -197,11 +200,15 @@ ensureColumn('users', 'is_admin', 'is_admin INTEGER NOT NULL DEFAULT 0')
 ensureColumn('markets', 'rules', 'rules TEXT')
 // Machine-readable auto-resolution spec (JSON) for feed-settled markets.
 ensureColumn('markets', 'resolver', 'resolver TEXT')
-// Ensure at least one admin exists — promote the earliest-registered user.
+// Ensure the designated admin is flagged — but never silently promote a random first
+// signup. Only the configured ADMIN_USERNAME (default 'sylvie') is auto-promoted.
 {
   const hasAdmin = db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_admin = 1').get().n
-  const first = db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get()
-  if (!hasAdmin && first) db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(first.id)
+  if (!hasAdmin) {
+    const adminName = process.env.ADMIN_USERNAME || 'sylvie'
+    const u = db.prepare('SELECT id FROM users WHERE username = ?').get(adminName)
+    if (u) db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(u.id)
+  }
 }
 
 export default db

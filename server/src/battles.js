@@ -51,7 +51,7 @@ export function settleBattle(battleId) {
 }
 
 const CATEGORIES = ['Reasoning', 'Coding', 'Math', 'Creative writing', 'Agentic', 'General knowledge']
-const TARGET_OPEN = 4
+const TARGET_OPEN = 6
 
 // Keep the Arena alive: top up to TARGET_OPEN open battles with fresh random
 // matchups (weighted toward closely-rated models so fights are competitive).
@@ -82,8 +82,9 @@ export function ensureOpenBattles({ log = console.log } = {}) {
     const pool = near.length ? near : models.filter((m) => m.id !== a.id)
     const b = pool[Math.floor(Math.random() * pool.length)]
     const cat = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)]
-    // Stagger closes so they don't all settle at once: 5–14 min out.
-    const mins = 5 + Math.floor(Math.random() * 10)
+    // Stagger closes so they don't all settle at once, and keep them open long
+    // enough that the Arena always shows live matchups: 20–50 min out.
+    const mins = 20 + Math.floor(Math.random() * 30)
     const closesAt = new Date(Date.now() + mins * 60000).toISOString()
     ins.run(a.id, b.id, cat, closesAt, now)
   }

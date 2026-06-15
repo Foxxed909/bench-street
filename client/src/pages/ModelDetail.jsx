@@ -119,6 +119,8 @@ export default function ModelDetail() {
   const up = changePct >= 0
   const perVote = model.perVoteValue ?? voteRate
   const costMult = voteRate ? perVote / voteRate : 1
+  const baseVotes = model.baseVotes || 0
+  const totalNet = baseVotes + net
   const suspended = model.status === 'suspended'
   const upcoming = model.status === 'upcoming'
   const inactive = suspended || upcoming
@@ -293,17 +295,17 @@ export default function ModelDetail() {
           <div className="card p-5">
             <h2 className="text-sm font-semibold text-white mb-1">Why this price</h2>
             <p className="text-xs text-slate-500 mb-4">
-              Price is the crowd's net verdict. It launches at $0 and moves{' '}
-              {money(perVote)} per net vote — the {money(voteRate)} base scaled ×{num(costMult, 2)} by
-              this model's token price. Dislikes pull it back down.
+              Price opens from a quality line — {num(baseVotes, 0)} votes' worth, set by this model's
+              benchmark standing — and moves {money(perVote)} per net community vote on top. Dislikes
+              pull it down.
             </p>
 
             {/* The formula, as factor chips */}
             <div className="flex flex-wrap items-stretch gap-2 text-center">
               <Factor
-                label="Net votes"
-                value={`${net > 0 ? '+' : ''}${num(net, 0)}`}
-                sub={`${num(liveLikes, 0)} 👍 · ${num(liveDislikes, 0)} 👎`}
+                label="Opening + votes"
+                value={`${totalNet > 0 ? '+' : ''}${num(totalNet, 0)}`}
+                sub={`${num(baseVotes, 0)} opening · ${net >= 0 ? '+' : ''}${num(net, 0)} votes`}
               />
               <Op>×</Op>
               <Factor
@@ -315,11 +317,9 @@ export default function ModelDetail() {
               <Factor label="Price" value={money(livePrice)} accent />
             </div>
 
-            {net <= 0 && (
+            {net === 0 && !inactive && (
               <div className="mt-3 rounded-lg border border-edge bg-ink/40 px-3 py-2 text-sm text-slate-400">
-                {liveLikes === 0 && liveDislikes === 0
-                  ? `No votes yet — this model sits at ${money(0)}. Be the first to value it.`
-                  : `Net sentiment is ${num(net, 0)}, so the price floors at ${money(0)}.`}
+                Trading on its quality opening line — no community votes yet. Be the first to move it.
               </div>
             )}
 

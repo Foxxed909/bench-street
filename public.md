@@ -1,5 +1,27 @@
 # Bench Street — Public Changelog
 
+## v1.3.0 — Quality opening line + design overhaul (2026-06-15)
+
+### Features
+- **Models open at a price.** Instead of starting at $0, every tradeable model now opens at a price
+  ranked by its benchmark standing — so the board is alive and sensibly ordered from the first
+  visit. Community votes move it from there (suspended/unreleased models stay $0).
+- **Effort tiers grouped & ordered.** A model's low / medium / high variants now sit together and
+  read low → high instead of scattered.
+
+### Design
+- **New look.** Deep indigo canvas (no more flat black) with violet/blue depth, raised skeuomorphic
+  cards, softer borders, and recessed inputs — less flat, more tactile.
+- **Bento dashboard.** The Bench Street Index and headline stats tile cleanly as a bento grid
+  instead of stacking unevenly.
+- **Mobile nav.** A proper menu on phones — every page is reachable.
+
+### Fixes
+- The index no longer reads near-zero (it ignores unpriced models); 24h % reflects moves from the
+  opening price; "1 model" no longer says "1 models"; the Grok 4.3 Heavy ticker no longer collides
+  with Grok 4.3 (high effort); the Arena leads with live matchups and keeps them open longer; a
+  fresh signup is never silently made an admin.
+
 ## v1.2.0 — Effort-tier models + terminal design pass (2026-06-15)
 
 ### Features

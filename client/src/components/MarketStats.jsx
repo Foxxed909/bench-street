@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, ArrowDownRight, ChevronUp } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react'
 import { usePrices } from '../store/prices.jsx'
 import AnimatedNumber from './AnimatedNumber.jsx'
 import Sparkline from './Sparkline.jsx'
 import { num, pct, upDown } from '../lib/format.js'
 
-// The Bench Street Index hero — a single living number for the whole market,
-// with its own sparkline and the day's headline stats alongside.
+// The Bench Street Index hero + headline stats, laid out as a bento: one large
+// living-index tile spanning a 2×2 block, with four equal stat tiles filling the
+// rest so the space tiles cleanly (no ragged stacking).
 export default function MarketStats({ models }) {
   const { prices, likes, dislikes } = usePrices()
   const [hist, setHist] = useState([])
@@ -20,21 +21,18 @@ export default function MarketStats({ models }) {
     return { ...m, price, cp, net }
   })
 
-  // Only tradeable (active) models count toward the index — suspended/upcoming
-  // models sit at $0 forever and would otherwise drag the headline number down.
+  // Index over models that actually have a price (active + priced). Suspended /
+  // unpriced models would otherwise drag the headline number toward zero.
   const tradeable = live.filter((m) => !m.status || m.status === 'active')
-  const index = tradeable.length ? tradeable.reduce((a, m) => a + m.price, 0) / tradeable.length : 0
-  const base = tradeable.length
-    ? tradeable.reduce((a, m) => a + m.prevClose, 0) / tradeable.length
-    : 0
+  const priced = tradeable.filter((m) => m.price > 0)
+  const index = priced.length ? priced.reduce((a, m) => a + m.price, 0) / priced.length : 0
+  const base = priced.length ? priced.reduce((a, m) => a + (m.prevClose || 0), 0) / priced.length : 0
   const indexCp = base ? ((index - base) / base) * 100 : 0
   const gainers = tradeable.filter((m) => m.cp > 0.01).length
   const losers = tradeable.filter((m) => m.cp < -0.01).length
   const topMover = [...tradeable].sort((a, b) => b.cp - a.cp)[0]
   const topRated = [...tradeable].sort((a, b) => b.net - a.net)[0]
 
-  // Sample the index into a sparkline (throttled to ~1/sec). Hook must run every
-  // render — keep it above any early return.
   useEffect(() => {
     if (!index) return
     const now = Date.now()
@@ -46,9 +44,9 @@ export default function MarketStats({ models }) {
   if (!models.length) return null
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {/* Hero index */}
-      <div className="card lift relative overflow-hidden p-6 lg:col-span-2">
+    <div className="grid auto-rows-[minmax(0,1fr)] grid-cols-2 gap-3 lg:grid-cols-4 lg:grid-rows-2">
+      {/* Hero index — spans a 2×2 block */}
+      <div className="card relative col-span-2 row-span-2 overflow-hidden p-6">
         <div className="absolute right-5 top-5 flex items-center gap-1.5">
           <span className="live-dot" />
           <span className="label">live</span>
@@ -65,15 +63,15 @@ export default function MarketStats({ models }) {
             <span className="num">{pct(indexCp)}</span>
           </div>
         </div>
-        <div className="mt-4 -mb-1">
+        <div className="mt-5 -mb-1">
           <Sparkline
-            data={hist.length > 1 ? hist : tradeable.map((m) => m.price)}
+            data={hist.length > 1 ? hist : priced.map((m) => m.price)}
             color={indexCp >= 0 ? '#27d18b' : '#fb5a6a'}
             width={560}
-            height={56}
+            height={64}
           />
         </div>
-        <div className="mt-3 flex items-center gap-5 text-xs text-slate-500">
+        <div className="mt-4 flex items-center gap-5 text-xs text-slate-400">
           <span>
             <span className="num text-up">{gainers}</span> advancing
           </span>
@@ -81,49 +79,62 @@ export default function MarketStats({ models }) {
             <span className="num text-down">{losers}</span> declining
           </span>
           <span>
-            <span className="num text-slate-300">{models.length}</span> listed
+            <span className="num text-slate-200">{priced.length}</span> priced ·{' '}
+            <span className="num text-slate-200">{models.length}</span> listed
           </span>
         </div>
       </div>
 
-      {/* Highlights */}
-      <div className="grid grid-rows-2 gap-4">
-        <Highlight
-          label="Top mover"
-          model={topMover}
-          icon={topMover?.cp >= 0 ? ArrowUpRight : ArrowDownRight}
-          value={pct(topMover?.cp || 0)}
-          tone={upDown(topMover?.cp || 0)}
-        />
-        <Highlight
-          label="Top rated"
-          model={topRated}
-          icon={ChevronUp}
-          value={`${topRated?.net > 0 ? '+' : ''}${num(topRated?.net || 0, 0)} net`}
-          tone="text-accent"
-        />
-      </div>
+      {/* Four equal stat tiles */}
+      <ModelTile
+        label="Top mover"
+        model={topMover}
+        icon={topMover?.cp >= 0 ? ArrowUpRight : ArrowDownRight}
+        value={pct(topMover?.cp || 0)}
+        tone={upDown(topMover?.cp || 0)}
+      />
+      <ModelTile
+        label="Top rated"
+        model={topRated}
+        icon={ChevronUp}
+        value={`${topRated?.net > 0 ? '+' : ''}${num(topRated?.net || 0, 0)} net`}
+        tone="text-accent"
+      />
+      <CountTile label="Advancing" value={gainers} icon={TrendingUp} tone="text-up" />
+      <CountTile label="Declining" value={losers} icon={TrendingDown} tone="text-down" />
     </div>
   )
 }
 
-function Highlight({ label, model, icon: Icon, value, tone }) {
+function ModelTile({ label, model, icon: Icon, value, tone }) {
   if (!model) return <div className="card" />
   return (
-    <Link to={`/m/${model.slug}`} className="card lift flex flex-col justify-center p-4">
-      <div className="label mb-2 flex items-center gap-1.5">
+    <Link to={`/m/${model.slug}`} className="card lift flex flex-col justify-between p-4">
+      <div className="label flex items-center gap-1.5">
         <Icon size={12} /> {label}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="mt-2 flex items-center gap-2">
         <span
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[10px] font-bold"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[10px] font-bold ring-1 ring-inset ring-white/5"
           style={{ background: `${model.color}22`, color: model.color }}
         >
           {model.ticker.slice(0, 2)}
         </span>
-        <span className="truncate font-medium text-white">{model.name}</span>
+        <span className="truncate text-sm font-medium text-white">{model.name}</span>
       </div>
       <div className={`num mt-1.5 text-sm ${tone}`}>{value}</div>
     </Link>
+  )
+}
+
+function CountTile({ label, value, icon: Icon, tone }) {
+  return (
+    <div className="card flex flex-col justify-between p-4">
+      <div className="label flex items-center gap-1.5">
+        <Icon size={12} /> {label}
+      </div>
+      <div className={`num mt-2 text-3xl font-bold leading-none ${tone}`}>{value}</div>
+      <div className="mt-1.5 text-[11px] text-slate-500">models today</div>
+    </div>
   )
 }
