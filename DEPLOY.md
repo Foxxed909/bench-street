@@ -1,9 +1,14 @@
 # Deploying Bench Street
 
 ## ✅ Live deployment (2026-06-15)
-- **App (Vercel):** https://client-xi-orcin.vercel.app
+- **App (Vercel):** https://benchstreet.vercel.app (alias of the `client` project;
+  `client-xi-orcin.vercel.app` still works too)
 - **API (Railway):** https://bench-street-api-production.up.railway.app  (health: `/api/health`)
 - **Repo:** https://github.com/Foxxed909/bench-street (private)
+- **URL alias:** `benchstreet.vercel.app` is pinned via `client/vercel.json` `"alias"`, so every
+  `vercel --prod` re-claims it for the new production deployment. Don't use `vercel alias set`
+  to a raw deployment URL — that one loses production status and starts returning 401
+  (Deployment Protection). The vercel.json alias is the durable way.
 - Frontend built with `VITE_API_URL` → the Railway API; backend `CLIENT_ORIGIN=*`,
   `NODE_ENV=production`, generated `JWT_SECRET`.
 - Redeploy frontend: `cd client && vercel --prod`. Redeploy backend: `cd server && railway up`
