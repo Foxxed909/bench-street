@@ -1,5 +1,26 @@
 # Bench Street — Public Changelog
 
+## v1.2.0 — Effort-tier models + terminal design pass (2026-06-15)
+
+### Features
+- **Reasoning-effort tiers.** Every reasoning model now lists as three tradeable lines —
+  **low / medium / high** effort — each with its own price and votes (66 models total). More
+  effort means pricier per task and a stronger benchmark profile, just like the real APIs. Pro,
+  Heavy, suspended, and unreleased models stay single-tier.
+- **Lab-grouped Floor + sector index.** The Floor now reads as a trading terminal: models grouped
+  into lab sections, with a clickable sector-index strip up top showing each lab's aggregate value
+  and net sentiment.
+
+### Design
+- **Live clock + freshness stamps.** A ticking HH:MM:SS clock (with a live dot) sits in the nav on
+  every page, and model pages stamp each quote with "as of [time]" — so it's always clear the data
+  is current.
+- **Clearer color language.** "Live" now uses a distinct cyan so it never reads as a price rise;
+  metadata badges (effort, open-source) are grayscale so color is reserved for meaning (up/down,
+  brand, lifecycle state).
+- **Aligned numbers everywhere** (tabular figures), plus a short reassurance note on signup
+  ("play money only — no real funds, no card, no spam").
+
 ## v1.1.0 — Coming-soon models, watchlist, filters, payout previews (2026-06-15)
 
 ### Features

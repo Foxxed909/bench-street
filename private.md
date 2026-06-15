@@ -1,5 +1,28 @@
 # Bench Street — Internal Notes
 
+## Effort-tier models + terminal design pass (v1.2.0) — SHIPPED 2026-06-15
+- **Effort tiers.** `seed.js`: `REASONING` set (17 base slugs) + `EFFORTS` [low ×0.6 / −22 elo / −5 bench,
+  medium ×1.0, high ×1.9 / +12 / +3] → `expandEfforts()` builds ROSTER (32 base → **66**). `medium` KEEPS
+  the base slug (preserves votes/prices/markets/battles + inherits the live OpenRouter price); low/high get
+  `-low`/`-high` slugs + `L`/`H` ticker suffix, curated price (no provider id → no "live" badge).
+  Pro/Heavy/suspended/upcoming are NOT expanded (single fixed compute tier). New `models.effort` col
+  (db.js ensureColumn) seeded via insModel; exposed in routes/models.js SELECT + decorate. Prod migrated
+  32→66 on a plain `railway up` (idempotent seed + reconcile-delete). Verified: gpt-5-2 low/med/high =
+  $5.40 / $9 / $17.10 per Mtok, bench 86/91/94.
+- **Terminal Floor.** Floor.jsx: lab `sections` (grouped when `company==='All'`, flattened when a single
+  lab is filtered), section header rows, `labs` sector-chip strip (click → `setCompany` toggle), effort
+  badge in row, "By lab" toggle. format.js `effortLabel()` / `EFFORT_ORDER`.
+- **design-scout findings (design-discipline pass, all routes).** `--live` cyan `#22d3ee` (live-dot +
+  pulseRing) deliberately distinct from up-green so "feed live" ≠ "price up". New `LiveClock.jsx` (ticking
+  HH:MM:SS + cyan dot, optional `prefix`) in Nav (every URL) + ModelDetail ("as of" quote stamp).
+  Single-accent: effort/open badges → neutral `bg-white/[0.06] text-slate-400`, "live" badge → cyan.
+  `font-variant-numeric: tabular-nums` on `body`. Login signup-only reassurance footnote. (Predictions/Arena
+  inherit the global layer; betting layout untouched per the user's "not bets".)
+- Studied via the new user-scoped **design-scout** agent (`~/.claude/agents/design-scout.md`) — studies a
+  design, extracts reusable patterns, never implements.
+- Commit `df16206`. Both ends deployed + Playwright-verified (0 console errors; the first benchstreet load
+  hit a transient sandbox network blip — clean on reload, API returned 66 every curl).
+
 ## Coming-soon, watchlist, filters, payout previews (v1.1.0)
 - **`upcoming` lifecycle (3rd status).** GPT-5.6 & 5.6 Pro reseeded `status:'upcoming'`, `released_at:null`.
   Generalized the guards: vote route (models.js) + trade.js now reject any `status !== 'active'`
