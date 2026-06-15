@@ -15,8 +15,9 @@ router.post('/', requireAuth, (req, res) => {
 
   const model = db.prepare('SELECT * FROM models WHERE slug = ?').get(slug)
   if (!model) return res.status(404).json({ error: 'model not found' })
-  if (model.status === 'suspended') {
-    return res.status(400).json({ error: 'this model is suspended and cannot be traded' })
+  if (model.status && model.status !== 'active') {
+    const why = model.status === 'suspended' ? 'suspended' : 'not released yet'
+    return res.status(400).json({ error: `this model is ${why} and cannot be traded` })
   }
 
   const price = model.price

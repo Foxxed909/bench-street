@@ -1,5 +1,24 @@
 # Bench Street — Public Changelog
 
+## v1.1.0 — Coming-soon models, watchlist, filters, payout previews (2026-06-15)
+
+### Features
+- **Coming soon models.** Unreleased models (GPT-5.6 & 5.6 Pro) now show a "soon" badge, sit at the
+  top of the Floor, and aren't tradeable or votable until they launch — with a clear notice on their
+  page. No more treating an unreleased model as "new".
+- **Watchlist.** Tap the ★ on any model to save it; flip the "Watchlist" filter to see just your list
+  (kept on your device, no account needed).
+- **Filters & search.** Filter the Floor by company, see a live "showing X of Y" count, and press
+  **/** anywhere to jump to search (Esc clears it).
+- **Payout previews.** Predictions and Arena now show your estimated winnings as you type a stake.
+- **Share a model.** A one-tap "Share" button copies a link to any model's page.
+- **Welcome banner.** A quick, dismissible intro explains how prices work, with a "start with $100k"
+  sign-up prompt.
+
+### Polish
+- The Bench Street Index and gainers/losers now ignore suspended & unreleased models, so the headline
+  number reflects only what's actually trading.
+
 ## v1.0.0 — Real model lineups, suspended models, research bets (2026-06-15)
 
 ### Features

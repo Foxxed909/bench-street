@@ -128,8 +128,9 @@ function syncTallies(modelId) {
 router.post('/:slug/vote', requireAuth, (req, res) => {
   const m = db.prepare('SELECT id, status FROM models WHERE slug = ?').get(req.params.slug)
   if (!m) return res.status(404).json({ error: 'model not found' })
-  if (m.status === 'suspended') {
-    return res.status(400).json({ error: 'model access is suspended — voting is disabled' })
+  if (m.status && m.status !== 'active') {
+    const why = m.status === 'suspended' ? 'access is suspended' : 'has not launched yet'
+    return res.status(400).json({ error: `voting is disabled — this model ${why}` })
   }
 
   const want = Number(req.body?.value)

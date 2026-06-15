@@ -20,13 +20,18 @@ export default function MarketStats({ models }) {
     return { ...m, price, cp, net }
   })
 
-  const index = live.length ? live.reduce((a, m) => a + m.price, 0) / live.length : 0
-  const base = models.length ? models.reduce((a, m) => a + m.prevClose, 0) / models.length : 0
+  // Only tradeable (active) models count toward the index — suspended/upcoming
+  // models sit at $0 forever and would otherwise drag the headline number down.
+  const tradeable = live.filter((m) => !m.status || m.status === 'active')
+  const index = tradeable.length ? tradeable.reduce((a, m) => a + m.price, 0) / tradeable.length : 0
+  const base = tradeable.length
+    ? tradeable.reduce((a, m) => a + m.prevClose, 0) / tradeable.length
+    : 0
   const indexCp = base ? ((index - base) / base) * 100 : 0
-  const gainers = live.filter((m) => m.cp > 0.01).length
-  const losers = live.filter((m) => m.cp < -0.01).length
-  const topMover = [...live].sort((a, b) => b.cp - a.cp)[0]
-  const topRated = [...live].sort((a, b) => b.net - a.net)[0]
+  const gainers = tradeable.filter((m) => m.cp > 0.01).length
+  const losers = tradeable.filter((m) => m.cp < -0.01).length
+  const topMover = [...tradeable].sort((a, b) => b.cp - a.cp)[0]
+  const topRated = [...tradeable].sort((a, b) => b.net - a.net)[0]
 
   // Sample the index into a sparkline (throttled to ~1/sec). Hook must run every
   // render — keep it above any early return.
@@ -62,7 +67,7 @@ export default function MarketStats({ models }) {
         </div>
         <div className="mt-4 -mb-1">
           <Sparkline
-            data={hist.length > 1 ? hist : live.map((m) => m.price)}
+            data={hist.length > 1 ? hist : tradeable.map((m) => m.price)}
             color={indexCp >= 0 ? '#27d18b' : '#fb5a6a'}
             width={560}
             height={56}

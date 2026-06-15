@@ -174,20 +174,29 @@ function BattleCard({ battle, user, onChange }) {
       <div className="mt-auto pt-4">
         {open &&
           (user ? (
-            <div className="flex gap-2 items-center">
-              <div className="relative">
-                <span className="absolute left-2.5 top-2 text-slate-500 text-sm">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  className="input pl-6 w-28"
-                  value={stake}
-                  onChange={(e) => setStake(e.target.value)}
-                />
+            <div>
+              <div className="flex gap-2 items-center">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-slate-500 text-sm">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="input pl-6 w-28"
+                    value={stake}
+                    onChange={(e) => setStake(e.target.value)}
+                  />
+                </div>
+                <button disabled={busy} onClick={placeBet} className="btn-primary flex-1">
+                  {sel ? `Back ${sel.ticker}` : 'Pick a side'}
+                </button>
               </div>
-              <button disabled={busy} onClick={placeBet} className="btn-primary flex-1">
-                {sel ? `Back ${sel.ticker}` : 'Pick a side'}
-              </button>
+              {sel && Number(stake) > 0 && (
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  To win ≈{' '}
+                  <span className="font-mono text-up">{money(Number(stake) * sel.payout)}</span> if{' '}
+                  {sel.ticker} wins
+                </p>
+              )}
             </div>
           ) : (
             <Link to="/login" className="text-sm text-accent">

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Clock, Share2, Check } from 'lucide-react'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import { api } from '../lib/api.js'
 import { usePrices } from '../store/prices.jsx'
 import { useAuth } from '../store/auth.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import LikeDislike from '../components/LikeDislike.jsx'
+import WatchStar from '../components/WatchStar.jsx'
 import Benchmarks from '../components/Benchmarks.jsx'
 import Comments from '../components/Comments.jsx'
 import { money, num, pct, compact, upDown, isNew, releaseLabel } from '../lib/format.js'
@@ -34,7 +35,18 @@ export default function ModelDetail() {
   const [shares, setShares] = useState(1)
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
   const seeded = useRef(false)
+
+  async function share() {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  }
 
   function loadPosition() {
     if (!user) return setPosition(null)
@@ -107,18 +119,33 @@ export default function ModelDetail() {
   const perVote = model.perVoteValue ?? voteRate
   const costMult = voteRate ? perVote / voteRate : 1
   const suspended = model.status === 'suspended'
-  const canTrade = livePrice > 0 && !suspended
+  const upcoming = model.status === 'upcoming'
+  const inactive = suspended || upcoming
+  const canTrade = livePrice > 0 && !inactive
   const maxShares = user && livePrice ? Math.floor(user.cash / livePrice) : 0
   const estCost = (Number(shares) || 0) * (livePrice || 0)
 
   return (
     <div className="fade-up">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white mb-4"
-      >
-        <ArrowLeft size={15} /> The Floor
-      </Link>
+      <div className="mb-4 flex items-center justify-between">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white"
+        >
+          <ArrowLeft size={15} /> The Floor
+        </Link>
+        <div className="flex items-center gap-3">
+          <WatchStar slug={slug} size={17} />
+          <button
+            onClick={share}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white"
+            title="Copy link to this model"
+          >
+            {copied ? <Check size={13} className="text-up" /> : <Share2 size={13} />}
+            {copied ? 'Copied!' : 'Share'}
+          </button>
+        </div>
+      </div>
 
       {suspended && (
         <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5">
@@ -140,6 +167,19 @@ export default function ModelDetail() {
         </div>
       )}
 
+      {upcoming && (
+        <div className="mb-5 flex items-start gap-3 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3.5">
+          <Clock size={18} className="mt-0.5 shrink-0 text-sky-300" />
+          <div className="text-sm">
+            <div className="font-semibold text-sky-200">Coming soon — not released yet</div>
+            <p className="mt-0.5 text-sky-200/80">
+              {model.statusNote ||
+                'This model has been announced but not launched. Voting and trading open at release.'}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
           {/* Header + chart */}
@@ -156,6 +196,8 @@ export default function ModelDetail() {
                   <h1 className="text-xl font-bold text-white">{model.name}</h1>
                   {suspended ? (
                     <span className="pill bg-amber-500/15 text-amber-300">suspended</span>
+                  ) : upcoming ? (
+                    <span className="pill bg-sky-500/15 text-sky-300">soon</span>
                   ) : (
                     isNew(model.releasedAt) && <span className="pill bg-accent/15 text-accent">new</span>
                   )}
@@ -365,6 +407,8 @@ export default function ModelDetail() {
               <p className="text-xs text-slate-500 mt-3">
                 {suspended
                   ? 'This model is suspended and cannot be traded.'
+                  : upcoming
+                  ? "This model hasn't launched yet — trading opens at release."
                   : 'No price yet — this model needs votes before it can be traded.'}
               </p>
             )}
@@ -419,7 +463,7 @@ export default function ModelDetail() {
                 likes={liveLikes}
                 dislikes={liveDislikes}
                 myVote={model.myVote}
-                disabled={suspended}
+                disabled={inactive}
                 onChange={(myVote, l, d) =>
                   setModel((mm) => ({
                     ...mm,

@@ -1,5 +1,28 @@
 # Bench Street — Internal Notes
 
+## Coming-soon, watchlist, filters, payout previews (v1.1.0)
+- **`upcoming` lifecycle (3rd status).** GPT-5.6 & 5.6 Pro reseeded `status:'upcoming'`, `released_at:null`.
+  Generalized the guards: vote route (models.js) + trade.js now reject any `status !== 'active'`
+  (suspended OR upcoming) with a tailored message. Floor `StatusBadge` + ModelDetail render suspended
+  (amber)/upcoming (sky "soon")/new. ModelDetail has a blue "Coming soon" banner; `inactive =
+  suspended||upcoming` gates trade+vote. Floor `new` sort floats `upcoming` to the very top, then by
+  `releasedAt` desc. NOTE the bet markets still list `gpt-5-6-pro` as a year-end candidate — fine,
+  it'll be released by close.
+- **Watchlist (client-only).** `lib/watchlist.js` = localStorage set (`bs_watchlist`) + module-level
+  pub/sub + `useWatchlist()` hook + `toggleWatch()`. `components/WatchStar.jsx` (stops propagation so
+  it works inside row links — star is OUTSIDE the `<Link>` to avoid button-in-anchor). Floor has a
+  star per row + a "Watchlist" filter toggle.
+- **Floor filters.** Company `<select>` (derived from roster), "/" focuses search + Esc clears
+  (window keydown, skips when typing), "Showing X of Y" count, empty-state message (watchlist vs
+  filters). Intro banner (`bs_intro_dismissed`) adapts: logged-out gets a $100k signup CTA.
+- **Payout previews.** Predictions MarketCard + Arena BattleCard show `stake × payout` ("to win ≈")
+  live as you type. ModelDetail "Share" button = `navigator.clipboard.writeText(location.href)` with
+  an inline "Copied!" (1.6s), plus a header WatchStar.
+- **Index correctness (MarketStats).** BSI/base/gainers/losers/topMover/topRated now computed over
+  `tradeable = live.filter(m => !m.status || m.status==='active')`; "listed" count stays total.
+- Verified live via Playwright: GPT-5.6/Pro "soon" at top + coming-soon page + disabled trade;
+  watchlist star→filter→"Showing 1 of 32"; company filter/intro/CTA/count all present; 0 console errors.
+
 ## Real lineups, suspended models, research bets (v1.0.0)
 - **Roster 52 → 32.** Deleted `TIER_BASES`/`TIERS`/`TIER_MODELS` from seed.js. New `VARIANTS` array
   (10 real models: gpt-5-5(+pro), gpt-5-6(+pro), grok-4-3(+heavy), gemini-3-5-pro, gemini-3-5-flash,

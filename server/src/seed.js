@@ -35,12 +35,14 @@ const BASE_ROSTER = [
 // is blended $/Mtok; the live feed overwrites it where a provider id exists.
 const SUSPENDED_NOTE =
   'Access suspended 2026-06-12 under a US government export directive. Anthropic is working to restore access.'
+const UPCOMING_NOTE =
+  'Announced but not yet released — listed for tracking. Voting and trading open when it launches.'
 
 const VARIANTS = [
   { slug: 'gpt-5-5',          name: 'GPT-5.5',          company: 'OpenAI',    ticker: 'GPT55',  open: 0, color: '#10a37f', elo: 1405, usage: 0, bench: 93, downloads: null, apiPrice: 7.0,  vol: 0.011, released: '2026-03-10' },
   { slug: 'gpt-5-5-pro',      name: 'GPT-5.5 Pro',      company: 'OpenAI',    ticker: 'GPT55P', open: 0, color: '#0e8f6f', elo: 1418, usage: 0, bench: 95, downloads: null, apiPrice: 14.0, vol: 0.012, released: '2026-03-10' },
-  { slug: 'gpt-5-6',          name: 'GPT-5.6',          company: 'OpenAI',    ticker: 'GPT56',  open: 0, color: '#10a37f', elo: 1420, usage: 0, bench: 94, downloads: null, apiPrice: 8.0,  vol: 0.012, released: '2026-05-20' },
-  { slug: 'gpt-5-6-pro',      name: 'GPT-5.6 Pro',      company: 'OpenAI',    ticker: 'GPT56P', open: 0, color: '#0e8f6f', elo: 1432, usage: 0, bench: 96, downloads: null, apiPrice: 16.0, vol: 0.013, released: '2026-05-20' },
+  { slug: 'gpt-5-6',          name: 'GPT-5.6',          company: 'OpenAI',    ticker: 'GPT56',  open: 0, color: '#10a37f', elo: 1420, usage: 0, bench: 94, downloads: null, apiPrice: 8.0,  vol: 0.012, released: null, status: 'upcoming', statusNote: UPCOMING_NOTE },
+  { slug: 'gpt-5-6-pro',      name: 'GPT-5.6 Pro',      company: 'OpenAI',    ticker: 'GPT56P', open: 0, color: '#0e8f6f', elo: 1432, usage: 0, bench: 96, downloads: null, apiPrice: 16.0, vol: 0.013, released: null, status: 'upcoming', statusNote: UPCOMING_NOTE },
   { slug: 'grok-4-3',         name: 'Grok 4.3',         company: 'xAI',       ticker: 'GROK43', open: 0, color: '#5b6470', elo: 1398, usage: 0, bench: 91, downloads: null, apiPrice: 6.5,  vol: 0.013, released: '2026-05-01' },
   { slug: 'grok-4-3-heavy',   name: 'Grok 4.3 Heavy',   company: 'xAI',       ticker: 'GRK43H', open: 0, color: '#7a828d', elo: 1414, usage: 0, bench: 93, downloads: null, apiPrice: 13.0, vol: 0.014, released: '2026-05-01' },
   { slug: 'gemini-3-5-pro',   name: 'Gemini 3.5 Pro',   company: 'Google',    ticker: 'GEM35P', open: 0, color: '#4285f4', elo: 1412, usage: 0, bench: 93, downloads: null, apiPrice: 7.5,  vol: 0.010, released: '2026-04-15' },
