@@ -81,6 +81,12 @@ export default function Login() {
           {mode === 'login' ? 'No account? Sign up' : 'Have an account? Sign in'}
         </button>
       </div>
+      {mode === 'signup' && (
+        <p className="mt-4 text-center text-xs text-slate-600">
+          Play money only — no real funds, no card, no spam. You start with{' '}
+          <span className="num text-slate-500">$100,000</span> in credits.
+        </p>
+      )}
     </div>
   )
 }

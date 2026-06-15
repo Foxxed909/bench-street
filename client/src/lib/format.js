@@ -26,6 +26,14 @@ export function isNew(releasedAt) {
   return Date.now() - new Date(releasedAt).getTime() < NEW_WINDOW_MS
 }
 
+// Reasoning-effort tier display. Same model, different compute: more effort = pricier
+// per task and a stronger benchmark profile. `null` for non-reasoning models.
+export const EFFORT_ORDER = { low: 0, medium: 1, high: 2 }
+const EFFORT_LABELS = { low: 'low', medium: 'med', high: 'high' }
+export function effortLabel(e) {
+  return e ? EFFORT_LABELS[e] || e : null
+}
+
 // Short release-date label, e.g. "Jun 9, 2026".
 export function releaseLabel(iso) {
   if (!iso) return null

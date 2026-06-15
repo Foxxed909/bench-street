@@ -2,6 +2,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { Wallet } from 'lucide-react'
 import { useAuth } from '../store/auth.jsx'
 import { money } from '../lib/format.js'
+import LiveClock from './LiveClock.jsx'
 
 export default function Nav() {
   const { user, logout } = useAuth()
@@ -45,6 +46,8 @@ export default function Nav() {
           )}
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">
+          <LiveClock className="hidden md:flex" />
+          <span className="hidden h-4 w-px bg-edge md:block" />
           {user ? (
             <>
               <div className="flex items-center gap-2 rounded-lg border border-edge bg-panel px-3 py-1.5">

@@ -6,11 +6,12 @@ import { api } from '../lib/api.js'
 import { usePrices } from '../store/prices.jsx'
 import { useAuth } from '../store/auth.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
+import LiveClock from '../components/LiveClock.jsx'
 import LikeDislike from '../components/LikeDislike.jsx'
 import WatchStar from '../components/WatchStar.jsx'
 import Benchmarks from '../components/Benchmarks.jsx'
 import Comments from '../components/Comments.jsx'
-import { money, num, pct, compact, upDown, isNew, releaseLabel } from '../lib/format.js'
+import { money, num, pct, compact, upDown, isNew, releaseLabel, effortLabel } from '../lib/format.js'
 
 // Live signals shown for transparency. API price scales each vote's value; the
 // rest are context only.
@@ -201,10 +202,16 @@ export default function ModelDetail() {
                   ) : (
                     isNew(model.releasedAt) && <span className="pill bg-accent/15 text-accent">new</span>
                   )}
-                  {model.openSource && <span className="pill bg-up/15 text-up">open</span>}
+                  {model.effort && (
+                    <span className="pill bg-white/[0.06] text-slate-400">
+                      {effortLabel(model.effort)} effort
+                    </span>
+                  )}
+                  {model.openSource && <span className="pill bg-white/[0.06] text-slate-400">open</span>}
                 </div>
                 <p className="text-sm text-slate-400">
                   {model.company} · <span className="font-mono">{model.ticker}</span>
+                  {model.effort && <> · {model.effort} reasoning</>}
                   {releaseLabel(model.releasedAt) && (
                     <> · released {releaseLabel(model.releasedAt)}</>
                   )}
@@ -216,6 +223,7 @@ export default function ModelDetail() {
                   className="text-2xl font-mono text-white tabular-nums"
                 />
                 <div className={`text-sm font-mono ${upDown(changePct)}`}>{pct(changePct)}</div>
+                <LiveClock prefix="as of" className="mt-1 justify-end" />
               </div>
             </div>
 

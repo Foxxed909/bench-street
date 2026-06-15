@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, RefreshCw, Star, X, Sparkles } from 'lucide-react'
 import { api } from '../lib/api.js'
@@ -10,7 +10,7 @@ import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import LikeDislike from '../components/LikeDislike.jsx'
 import WatchStar from '../components/WatchStar.jsx'
 import MarketStats from '../components/MarketStats.jsx'
-import { pct, upDown, ago, isNew } from '../lib/format.js'
+import { pct, upDown, ago, isNew, effortLabel, money, num } from '../lib/format.js'
 
 const ts = (d) => (d ? new Date(d).getTime() || 0 : 0)
 const SORTS = {
@@ -42,6 +42,7 @@ export default function Floor() {
   const [sort, setSort] = useState('new')
   const [company, setCompany] = useState('All')
   const [watchOnly, setWatchOnly] = useState(false)
+  const [grouped, setGrouped] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const { prices, history, likes, dislikes } = usePrices()
   const { user } = useAuth()
@@ -99,6 +100,22 @@ export default function Floor() {
     [models]
   )
 
+  // Per-lab "sector" stats for the index strip — computed over the full roster so the
+  // chips stay stable regardless of the active filter. Doubles as lab navigation.
+  const labs = useMemo(() => {
+    const map = new Map()
+    for (const m of models) {
+      const price = prices[m.id] ?? m.price
+      const net = (likes[m.id] ?? m.likes ?? 0) - (dislikes[m.id] ?? m.dislikes ?? 0)
+      const e = map.get(m.company) || { company: m.company, count: 0, total: 0, net: 0, color: m.color }
+      e.count += 1
+      e.total += price
+      e.net += net
+      map.set(m.company, e)
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total || b.count - a.count)
+  }, [models, prices, likes, dislikes])
+
   const rows = useMemo(() => {
     return models
       .map((m) => {
@@ -121,6 +138,88 @@ export default function Floor() {
       .sort(SORTS[sort])
   }, [models, prices, likes, dislikes, q, sort, company, watchOnly, watch])
 
+  // Group rows into lab sections (terminal-style). Grouping is moot once a single lab is
+  // selected, so we flatten in that case.
+  const sections = useMemo(() => {
+    if (!grouped || company !== 'All') return [{ company: null, color: null, total: 0, rows }]
+    const map = new Map()
+    for (const r of rows) {
+      if (!map.has(r.company)) map.set(r.company, [])
+      map.get(r.company).push(r)
+    }
+    return [...map.entries()]
+      .map(([c, list]) => ({
+        company: c,
+        color: list[0]?.color,
+        total: list.reduce((s, m) => s + m.livePrice, 0),
+        rows: list
+      }))
+      .sort((a, b) => b.total - a.total || a.company.localeCompare(b.company))
+  }, [rows, grouped, company])
+
+  const renderRow = (m, rank) => {
+    const inactive = m.status && m.status !== 'active'
+    return (
+      <tr
+        key={m.id}
+        className="group border-b border-edge/40 transition last:border-0 hover:bg-white/[0.02]"
+      >
+        <td className="num px-4 py-3 text-xs text-slate-600">{rank}</td>
+        <td className="px-2">
+          <div className="flex items-center gap-2">
+            <WatchStar slug={m.slug} />
+            <Link to={`/m/${m.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
+              <span
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[10px] font-bold ring-1 ring-inset ring-white/5"
+                style={{ background: `${m.color}1f`, color: m.color }}
+              >
+                {m.ticker.slice(0, 2)}
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate font-medium text-white transition group-hover:text-accent">
+                    {m.name}
+                  </span>
+                  {m.effort && (
+                    <span className="pill bg-white/[0.06] text-slate-400">{effortLabel(m.effort)}</span>
+                  )}
+                  <StatusBadge m={m} />
+                  {m.openSource && <span className="pill bg-white/[0.06] text-slate-400">open</span>}
+                  {m.liveSignals && <span className="pill bg-cyan-400/10 text-cyan-300">live</span>}
+                </span>
+                <span className="block text-xs text-slate-500">
+                  <span className="num">{m.ticker}</span> · {m.company}
+                </span>
+              </span>
+            </Link>
+          </div>
+        </td>
+        <td className="px-4 text-right">
+          <AnimatedNumber value={m.livePrice} duration={450} className="num text-white" />
+        </td>
+        <td className={`px-4 text-right num ${upDown(m.liveChangePct)}`}>{pct(m.liveChangePct)}</td>
+        <td className="hidden px-4 sm:table-cell">
+          <div className="flex justify-center">
+            <LikeDislike
+              slug={m.slug}
+              likes={m.liveLikes}
+              dislikes={m.liveDislikes}
+              myVote={m.myVote}
+              onChange={(mv, l, d) => patchVote(m.id, mv, l, d)}
+              size="sm"
+              disabled={inactive}
+            />
+          </div>
+        </td>
+        <td className="hidden px-4 md:table-cell">
+          <div className="flex justify-end">
+            <Sparkline data={history[m.id]} color={m.liveChangePct >= 0 ? '#27d18b' : '#fb5a6a'} />
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
   return (
     <div className="space-y-6 fade-up">
       <IntroBanner user={user} />
@@ -129,7 +228,7 @@ export default function Floor() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tightest text-white">The Floor</h1>
           <div className="flex items-center gap-3 mt-1">
-            <p className="text-sm text-slate-400">{models.length} AI models · live</p>
+            <p className="text-sm text-slate-400">{models.length} AI models · live exchange</p>
             {signals?.updatedAt && (
               <span className="flex items-center gap-1.5 text-xs text-slate-400">
                 <span className="live-dot" />
@@ -174,6 +273,37 @@ export default function Floor() {
         </div>
       </div>
 
+      {/* Sector index — per-lab aggregate, click to filter */}
+      {labs.length > 0 && (
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          {labs.map((l) => {
+            const active = company === l.company
+            return (
+              <button
+                key={l.company}
+                onClick={() => setCompany(active ? 'All' : l.company)}
+                className={`shrink-0 rounded-xl border px-3.5 py-2 text-left transition ${
+                  active
+                    ? 'border-accent/50 bg-accent/10'
+                    : 'border-edge bg-panel hover:border-slate-600'
+                }`}
+                title={`Show only ${l.company}`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: l.color }} />
+                  <span className="text-xs font-medium text-white">{l.company}</span>
+                </div>
+                <div className="num text-sm text-white">{money(l.total)}</div>
+                <div className="text-[10px] text-slate-500">
+                  {l.count} models · {l.net > 0 ? '+' : ''}
+                  {num(l.net, 0)} net
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <MarketStats models={models} />
 
       <div className="card overflow-hidden">
@@ -195,6 +325,17 @@ export default function Floor() {
               {label}
             </button>
           ))}
+          <span className="mx-1 h-4 w-px bg-edge" />
+          <button
+            onClick={() => setGrouped((v) => !v)}
+            disabled={company !== 'All'}
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition disabled:opacity-30 ${
+              grouped && company === 'All' ? 'bg-panel2 text-white' : 'text-slate-500 hover:text-slate-300'
+            }`}
+            title="Group models by lab"
+          >
+            By lab
+          </button>
           <button
             onClick={() => setWatchOnly((v) => !v)}
             className={`ml-auto flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition ${
@@ -218,70 +359,27 @@ export default function Floor() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((m, i) => {
-              const inactive = m.status && m.status !== 'active'
-              return (
-                <tr
-                  key={m.id}
-                  className="group border-b border-edge/40 transition last:border-0 hover:bg-white/[0.02]"
-                >
-                  <td className="num px-4 py-3 text-xs text-slate-600">{i + 1}</td>
-                  <td className="px-2">
-                    <div className="flex items-center gap-2">
-                      <WatchStar slug={m.slug} />
-                      <Link to={`/m/${m.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
-                        <span
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[10px] font-bold ring-1 ring-inset ring-white/5"
-                          style={{ background: `${m.color}1f`, color: m.color }}
-                        >
-                          {m.ticker.slice(0, 2)}
+            {sections.map((sec) => (
+              <Fragment key={sec.company ?? '_all'}>
+                {sec.company && (
+                  <tr className="bg-white/[0.02]">
+                    <td colSpan={6} className="px-4 py-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className="h-2 w-2 rounded-full" style={{ background: sec.color }} />
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                          {sec.company}
                         </span>
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-1.5">
-                            <span className="truncate font-medium text-white transition group-hover:text-accent">
-                              {m.name}
-                            </span>
-                            <StatusBadge m={m} />
-                            {m.openSource && <span className="pill bg-up/15 text-up">open</span>}
-                            {m.liveSignals && <span className="pill bg-accent/15 text-accent">live</span>}
-                          </span>
-                          <span className="block text-xs text-slate-500">
-                            <span className="num">{m.ticker}</span> · {m.company}
-                          </span>
+                        <span className="text-[11px] text-slate-600">
+                          {sec.rows.length} {sec.rows.length === 1 ? 'model' : 'models'}
                         </span>
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="px-4 text-right">
-                    <AnimatedNumber value={m.livePrice} duration={450} className="num text-white" />
-                  </td>
-                  <td className={`px-4 text-right num ${upDown(m.liveChangePct)}`}>
-                    {pct(m.liveChangePct)}
-                  </td>
-                  <td className="hidden px-4 sm:table-cell">
-                    <div className="flex justify-center">
-                      <LikeDislike
-                        slug={m.slug}
-                        likes={m.liveLikes}
-                        dislikes={m.liveDislikes}
-                        myVote={m.myVote}
-                        onChange={(mv, l, d) => patchVote(m.id, mv, l, d)}
-                        size="sm"
-                        disabled={inactive}
-                      />
-                    </div>
-                  </td>
-                  <td className="hidden px-4 md:table-cell">
-                    <div className="flex justify-end">
-                      <Sparkline
-                        data={history[m.id]}
-                        color={m.liveChangePct >= 0 ? '#27d18b' : '#fb5a6a'}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
+                        <span className="num ml-auto text-xs text-slate-500">{money(sec.total)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {sec.rows.map((m, i) => renderRow(m, i + 1))}
+              </Fragment>
+            ))}
           </tbody>
         </table>
 

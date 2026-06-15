@@ -51,7 +51,48 @@ const VARIANTS = [
   { slug: 'claude-mythos-5',  name: 'Claude Mythos 5',  company: 'Anthropic', ticker: 'MYTH5',  open: 0, color: '#b5532f', elo: 1450, usage: 0, bench: 97, downloads: null, apiPrice: 22.0, vol: 0.010, released: '2026-06-09', status: 'suspended', statusNote: SUSPENDED_NOTE }
 ]
 
-const ROSTER = [...BASE_ROSTER, ...VARIANTS]
+// Reasoning models expose a low/medium/high effort selector. We list each effort as its
+// own tradeable line: same underlying model, more thinking → more tokens (higher cost,
+// so each vote is worth more) and a stronger benchmark profile. 'medium' keeps the base
+// slug (so its votes/price/markets persist + it inherits the live OpenRouter price);
+// low/high are curated derivatives. Pro / Heavy / suspended / upcoming models aren't
+// expanded — each ships at a single fixed compute tier.
+const REASONING = new Set([
+  'gpt-5-2', 'gpt-5-mini', 'o4',
+  'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5',
+  'gemini-3-pro', 'gemini-3-flash',
+  'grok-4', 'grok-4-mini',
+  'deepseek-r2', 'qwen3-max', 'qwen3-235b',
+  'gpt-5-5', 'grok-4-3', 'gemini-3-5-pro', 'gemini-3-5-flash'
+])
+const EFFORTS = [
+  { key: 'low',    suffix: '-low',  tick: 'L', priceMul: 0.6, eloAdj: -22, benchAdj: -5 },
+  { key: 'medium', suffix: '',      tick: '',  priceMul: 1.0, eloAdj: 0,   benchAdj: 0 },
+  { key: 'high',   suffix: '-high', tick: 'H', priceMul: 1.9, eloAdj: 12,  benchAdj: 3 }
+]
+function expandEfforts(list) {
+  const out = []
+  for (const m of list) {
+    if (!REASONING.has(m.slug)) {
+      out.push({ ...m, effort: null })
+      continue
+    }
+    for (const e of EFFORTS) {
+      out.push({
+        ...m,
+        slug: m.slug + e.suffix,
+        ticker: m.ticker + e.tick,
+        apiPrice: Math.round(m.apiPrice * e.priceMul * 100) / 100,
+        elo: m.elo + e.eloAdj,
+        bench: Math.max(20, Math.min(99, m.bench + e.benchAdj)),
+        effort: e.key
+      })
+    }
+  }
+  return out
+}
+
+const ROSTER = expandEfforts([...BASE_ROSTER, ...VARIANTS])
 
 // Curated benchmark suite shown per model. Scores derive from each model's
 // composite quality (`bench`) with a per-benchmark bias + a stable jitter, so
@@ -235,13 +276,14 @@ export function seedDatabase({ force = false } = {}) {
   {
     const insModel = db.prepare(`
       INSERT INTO models (slug, name, company, ticker, open_source, color, volatility,
-                          status, status_note, released_at, created_at)
+                          status, status_note, released_at, effort, created_at)
       VALUES (@slug, @name, @company, @ticker, @open, @color, @vol,
-              @status, @statusNote, @released, @created_at)
+              @status, @statusNote, @released, @effort, @created_at)
       ON CONFLICT(slug) DO UPDATE SET
         name = excluded.name, company = excluded.company, ticker = excluded.ticker,
         open_source = excluded.open_source, color = excluded.color, volatility = excluded.volatility,
-        status = excluded.status, status_note = excluded.status_note, released_at = excluded.released_at
+        status = excluded.status, status_note = excluded.status_note,
+        released_at = excluded.released_at, effort = excluded.effort
     `)
     const insSignal = db.prepare(`
       INSERT INTO model_signals (model_id, elo, usage, bench, downloads, api_price, captured_at)
@@ -257,6 +299,7 @@ export function seedDatabase({ force = false } = {}) {
           status: m.status || 'active',
           statusNote: m.statusNote || null,
           released: m.released || null,
+          effort: m.effort || null,
           created_at: now
         })
         // On upsert-conflict lastInsertRowid is unreliable, so resolve id by slug.
