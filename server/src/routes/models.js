@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import db from '../db.js'
-import { PRICE_MULTIPLIER, VOTE_RATE, eloFactor } from '../pricing.js'
+import { VOTE_RATE, perVoteValue, pushModelPrice } from '../pricing.js'
 import { signalsStatus } from '../ingest.js'
 import { optionalAuth, requireAuth } from '../auth.js'
 
@@ -19,9 +19,8 @@ function decorate(m, votedByMe) {
     color: m.color,
     price: m.price,
     prevClose: m.prev_close,
-    fundamental: m.fundamental,
     tokenPrice: m.api_price ?? null,
-    eloFactor: m.elo != null ? +eloFactor(m.elo).toFixed(2) : null,
+    perVoteValue: perVoteValue(m.api_price),
     votes: m.vote_count || 0,
     votedByMe: !!votedByMe,
     liveSignals: !!(m.openrouter_id || m.hf_id),
@@ -39,7 +38,7 @@ function decorate(m, votedByMe) {
 
 const SELECT = `
   SELECT m.id, m.slug, m.name, m.company, m.ticker, m.open_source, m.color,
-         m.price, m.prev_close, m.fundamental, m.vote_count, m.openrouter_id, m.hf_id,
+         m.price, m.prev_close, m.vote_count, m.openrouter_id, m.hf_id,
          s.elo, s.usage, s.bench, s.downloads, s.api_price
     FROM models m
     LEFT JOIN model_signals s ON s.id = (
@@ -82,12 +81,7 @@ router.get('/:slug', optionalAuth, (req, res) => {
     .all(m.id)
     .reverse()
 
-  res.json({
-    model: decorate(m, votedByMe),
-    candles,
-    priceMultiplier: PRICE_MULTIPLIER,
-    voteRate: VOTE_RATE
-  })
+  res.json({ model: decorate(m, votedByMe), candles, voteRate: VOTE_RATE })
 })
 
 // Toggle the signed-in user's vote for a model. One vote per user per model.
@@ -116,7 +110,9 @@ router.post('/:slug/vote', requireAuth, (req, res) => {
   })()
 
   const votes = db.prepare('SELECT vote_count FROM models WHERE id = ?').get(m.id).vote_count
-  res.json({ ok: true, voted, votes })
+  // Votes are the price: recompute this model and broadcast the new price live.
+  const price = pushModelPrice(req.app.get('io'), m.id)
+  res.json({ ok: true, voted, votes, price })
 })
 
 export default router

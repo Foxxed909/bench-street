@@ -1,5 +1,5 @@
 import db from './db.js'
-import { recomputeFundamentals } from './pricing.js'
+import { recomputePrices } from './pricing.js'
 
 // Pull live signals from real sources and write a fresh model_signals snapshot:
 //   - LMArena    → live ELO (rating) + usage (share of arena votes)
@@ -121,7 +121,7 @@ function blendedPrice(pricing) {
   return blended > 0 ? +blended.toFixed(2) : null
 }
 
-export async function ingestSignals({ log = console.log } = {}) {
+export async function ingestSignals({ log = console.log, io = null } = {}) {
   const models = db.prepare('SELECT id, slug, openrouter_id, hf_id FROM models').all()
 
   // --- LMArena (ELO + votes) ---
@@ -200,7 +200,12 @@ export async function ingestSignals({ log = console.log } = {}) {
     }
   })()
 
-  recomputeFundamentals()
+  // Token prices feed each vote's value, so refresh prices and broadcast them.
+  const prices = recomputePrices()
+  if (io && prices.size) {
+    const models = db.prepare('SELECT id, price, vote_count AS votes FROM models').all()
+    io.emit('prices', { t: Date.now(), models })
+  }
   lastRun = {
     at: now,
     elos,
@@ -212,10 +217,10 @@ export async function ingestSignals({ log = console.log } = {}) {
   return lastRun
 }
 
-export function startSignalCron({ intervalMin = 10, log = console.log } = {}) {
-  setTimeout(() => ingestSignals({ log }).catch((e) => log('[ingest] error: ' + e.message)), 4000)
+export function startSignalCron({ intervalMin = 10, log = console.log, io = null } = {}) {
+  setTimeout(() => ingestSignals({ log, io }).catch((e) => log('[ingest] error: ' + e.message)), 4000)
   const timer = setInterval(
-    () => ingestSignals({ log }).catch((e) => log('[ingest] error: ' + e.message)),
+    () => ingestSignals({ log, io }).catch((e) => log('[ingest] error: ' + e.message)),
     intervalMin * 60 * 1000
   )
   return () => clearInterval(timer)

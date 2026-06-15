@@ -1,5 +1,19 @@
 # Bench Street — Public Changelog
 
+## v0.7.0 — Live from zero: votes set the price (2026-06-15)
+
+### Changes
+- **Every model launches at $0** and only gains value as people vote. No more pre-seeded
+  prices, no simulated ticks, no fabricated 24h swings — numbers move only on real activity.
+- **Price = votes × per-vote value.** Each vote is worth a $5 base, scaled ×0.5–2.0 by the
+  model's blended token price ($/Mtok). So a vote on a pricey frontier model (e.g. o4, ~$10/vote)
+  moves it more than a vote on a cheap small one (e.g. Phi-4, ~$2.50/vote) — the crowd drives it,
+  real economics tilt it.
+- Voting updates the price instantly and broadcasts it live to everyone.
+- Trading is disabled on a model until it has votes (no price = nothing to trade).
+- Model pages now explain price as *votes × per-vote value*, with a clean empty state before
+  the first vote.
+
 ## v0.6.0 — Cost × quality pricing (2026-06-15)
 
 ### Changes

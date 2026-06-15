@@ -25,15 +25,14 @@ npm run seed
 ```
 
 ## How pricing works
-1. **Fundamental value** — a model is worth its token economics times its quality:
-   `fundamental = blended API price ($/Mtok) × quality(ELO) × multiplier`, clamped to a
-   $10–$2500 band. API price is live from OpenRouter; the quality factor scales ~0.5×
-   (weak) to 2.0× (frontier) off the live LMArena ELO. See `server/src/pricing.js`.
-2. **Votes** — each community vote adds a flat amount (`VOTE_RATE`, $5) to a model's tick
-   target on top of its fundamental, so crowd conviction lifts the price.
-3. **Live ticks** — every ~4s the price mean-reverts toward `fundamental + votes × rate`
-   plus a volatility shock, and broadcasts over Socket.io. 1-minute OHLC candles are
-   persisted for charts.
+1. **Live from zero** — every model launches at **$0** and only gains value as people vote.
+   No pre-seeded prices, no simulation, no fabricated volatility.
+2. **Price = votes × per-vote value** — each vote is worth a `$5` base scaled ×0.5–2.0 by the
+   model's blended API price (`costFactor = clamp(0.5, 2, $/Mtok ÷ 5)`). A vote on a pricey
+   frontier model moves it more than a vote on a cheap one. See `server/src/pricing.js`.
+3. **Event-driven** — voting recomputes the model's price, persists a candle, and broadcasts it
+   over Socket.io instantly. Token-price refreshes (every ~10 min) also re-price and rebroadcast.
+   Trading is disabled until a model has a price.
 
 ## Layout
 ```

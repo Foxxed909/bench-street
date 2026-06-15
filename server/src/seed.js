@@ -1,5 +1,5 @@
 import db from './db.js'
-import { recomputeFundamentals } from './pricing.js'
+import { recomputePrices } from './pricing.js'
 
 // Illustrative seed roster. ELO / usage / benchmarks are curated snapshots (no free
 // real-time source). api_price and downloads are seeded here but get overwritten with
@@ -251,8 +251,10 @@ export function seedDatabase({ force = false } = {}) {
     })()
   }
 
-  recomputeFundamentals()
-  db.prepare('UPDATE models SET price = fundamental, prev_close = fundamental WHERE price = 0').run()
+  // Price = votes × per-vote value → $0 on a fresh roster. prev_close tracks it
+  // so day-one 24h reads 0%.
+  recomputePrices()
+  db.prepare('UPDATE models SET prev_close = price').run()
 
   return {
     seeded: modelCount === 0 || force,

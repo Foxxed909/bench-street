@@ -1,20 +1,25 @@
 # Bench Street — Internal Notes
 
-## Pricing (current — v0.6.0, Cost × quality)
-- **Fundamental = `api_price × eloFactor(elo) × PRICE_MULTIPLIER`**, clamped
-  `[PRICE_FLOOR=10, PRICE_CEIL=2500]`. `PRICE_MULTIPLIER=50`. See `recomputeFundamentals()` in
-  `pricing.js`. `api_price` is the live blended OpenRouter $/Mtok (0.75·prompt + 0.25·completion).
-- **`eloFactor(elo)` = clamp(0.5, 2.0, (elo−900)/360)`** — quality multiplier; null ELO → 1.0.
-- **Tick target = `fundamental + vote_count × VOTE_RATE($5)`**; price mean-reverts
-  `price += THETA(0.10)·(target−price) + volatility·price·gaussian()`, soft-banded to
-  `[0.8·target, 1.2·target]`, floored at $1. tick=4s.
-- Retired: the min-max weighted signal index (`WEIGHTS`, `normalize()`) **and** the trade-demand
-  term. `models.demand` column is dormant. Removing the index dropped usage/bench/downloads from
-  the price math — they're now context-only signals (still ingested + shown).
-- One very expensive model (o4 → gpt-5.2-pro, ~$58/Mtok live) pins the $2500 ceiling. Accept as
-  "priciest model = priciest stock"; raise CEIL or lower MULTIPLIER if it needs more headroom.
-- `routes/models.js` decorate() now exposes `tokenPrice` + `eloFactor`; detail returns
-  `priceMultiplier`. `ModelDetail.jsx` "Why this price" renders the formula as factor chips.
+## Pricing (current — v0.7.0, live from zero / votes set price)
+- **`price = vote_count × perVoteValue`**, `perVoteValue = VOTE_RATE($5) × costFactor`,
+  `costFactor = clamp(0.5, 2.0, api_price ÷ 5)`. Zero votes → **$0** for every model. See
+  `priceFor()` / `perVoteValue()` / `costFactor()` in `pricing.js`. `api_price` is the live
+  blended OpenRouter $/Mtok (0.75·prompt + 0.25·completion).
+- **No simulation.** Removed the random-walk tick (gaussian/THETA/volatility), the cost×quality
+  fundamental (`recomputeFundamentals`, `eloFactor`, `PRICE_MULTIPLIER`, `PRICE_FLOOR/CEIL`), and
+  the old signal index. Price changes ONLY when votes change or token prices refresh.
+- **Event-driven price:** `pushModelPrice(io, modelId)` recomputes one model after a vote, writes
+  a candle, and `io.emit('prices', {models:[{id,price,votes}]})`. Wired via `app.set('io', io)`
+  in `index.js`; the vote route calls `req.app.get('io')`. `ingest.js` also calls
+  `recomputePrices()` + broadcasts on each 10-min signal refresh (token price feeds per-vote value).
+- **24h:** `prev_close` seeded = price at boot (0 on fresh), rolled daily by a 24h `setInterval`.
+  changePct is /0-guarded, so day-one reads 0% until prices have a prior baseline. Honest, not faked.
+- **Trading:** blocked when `price <= 0` (trade route + disabled Buy/Sell in `ModelDetail`) so you
+  can't buy free shares before the crowd sets a price.
+- `decorate()` exposes `tokenPrice` + `perVoteValue`; detail returns `voteRate`. ModelDetail
+  "Why this price" = *votes × per-vote value* chips; chart guards empty data (shows a placeholder).
+- usage/bench/downloads/ELO are context-only signals now (still ingested + shown). `models.fundamental`
+  + `models.demand` columns are dormant.
 
 ## Architecture decisions (historical — superseded by the section above)
 - **Index mode, not order book.** Player trades don't set price directly; they feed a

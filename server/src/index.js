@@ -46,6 +46,8 @@ app.use('/api/admin', adminRoutes)
 
 const server = http.createServer(app)
 const io = new Server(server, { cors: { origin: ORIGIN } })
+// Make io reachable from routes (e.g. the vote route broadcasts price changes).
+app.set('io', io)
 
 io.on('connection', (socket) => {
   const models = db
@@ -55,7 +57,7 @@ io.on('connection', (socket) => {
 })
 
 startPricing(io)
-startSignalCron({ intervalMin: 10 })
+startSignalCron({ intervalMin: 10, io })
 startBattleSettler({ io })
 startAutoResolver({ io })
 

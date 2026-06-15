@@ -17,6 +17,10 @@ router.post('/', requireAuth, (req, res) => {
   if (!model) return res.status(404).json({ error: 'model not found' })
 
   const price = model.price
+  // A model with no votes has no price yet — block trading until the crowd sets one.
+  if (!(price > 0)) {
+    return res.status(400).json({ error: 'no price yet — this model needs votes first' })
+  }
   const total = +(qty * price).toFixed(2)
   const userId = req.user.id
 

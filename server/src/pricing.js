@@ -1,32 +1,42 @@
 import db from './db.js'
 
 // --- Price model -----------------------------------------------------------
-// A model's "fundamental value" = blended input/output token cost ($/Mtok, live
-// from OpenRouter) × a quality factor (from LMArena ELO) × a multiplier. 100% real
-// token economics — no curated index. Tune PRICE_MULTIPLIER to set the band.
-export const PRICE_MULTIPLIER = 50
-export const PRICE_FLOOR = 10
-export const PRICE_CEIL = 2500
+// A model's price is how much the community values it: it launches at $0 and
+// rises only as people vote. Each vote is worth a base amount scaled by the
+// model's real token economics, so a vote on a pricey frontier model moves it
+// more than a vote on a cheap small one — but with zero votes, every model is $0.
+//
+//   price        = votes × perVoteValue
+//   perVoteValue = VOTE_RATE × costFactor(blended $/Mtok)
+//   costFactor   = clamp(0.5, 2.0, tokenPrice ÷ COST_REF)
+//
+// No simulation, no random walk — price only changes when a real vote lands.
+export const VOTE_RATE = 5 // base $ per vote
+const COST_REF = 5 // $/Mtok reference where costFactor === 1.0
+const COST_MIN = 0.5
+const COST_MAX = 2.0
 
-// Quality multiplier from ELO: ~0.5 (weak) … 2.0 (frontier), ~1.0 mid-pack.
-export function eloFactor(elo) {
-  if (elo == null) return 1
-  return Math.max(0.5, Math.min(2, (elo - 900) / 360))
+// How much each vote is worth on a model, scaled by its blended token price.
+// A null/unknown price means no economic tilt → factor 1.0.
+export function costFactor(tokenPrice) {
+  if (tokenPrice == null || Number.isNaN(tokenPrice)) return 1
+  return Math.max(COST_MIN, Math.min(COST_MAX, tokenPrice / COST_REF))
 }
 
-const TICK_MS = 4000      // price tick cadence
-const THETA = 0.10        // mean-reversion strength per tick (pull toward target)
+export function perVoteValue(tokenPrice) {
+  return +(VOTE_RATE * costFactor(tokenPrice)).toFixed(2)
+}
 
-// --- Votes drive price -----------------------------------------------------
-// Each community vote adds a flat amount to a model's target price, on top of its
-// signal-derived fundamental. Price target = fundamental + (votes × VOTE_RATE).
-export const VOTE_RATE = 5
+// The price for a given vote count + token price. Zero votes → $0.
+export function priceFor(votes, tokenPrice) {
+  return +((votes || 0) * perVoteValue(tokenPrice)).toFixed(2)
+}
 
-// Pull the latest signal snapshot for every model.
-function latestSignals() {
+// Latest token price + current vote count for every model.
+function priceInputs() {
   return db
     .prepare(
-      `SELECT m.id, m.open_source, s.elo, s.usage, s.bench, s.downloads, s.api_price
+      `SELECT m.id, m.vote_count, s.api_price
          FROM models m
          LEFT JOIN model_signals s ON s.id = (
            SELECT id FROM model_signals
@@ -38,105 +48,89 @@ function latestSignals() {
     .all()
 }
 
-// Recompute every model's fundamental value from its latest signals.
-// fundamental = blended token price ($/Mtok) × quality(ELO) × multiplier,
-// clamped to [PRICE_FLOOR, PRICE_CEIL]. Returns a Map(modelId -> fundamental).
-export function recomputeFundamentals() {
-  const rows = latestSignals()
-  if (rows.length === 0) return new Map()
+function epochMinute() {
+  return Math.floor(Date.now() / 60000) * 60
+}
 
-  const update = db.prepare('UPDATE models SET fundamental = ? WHERE id = ?')
+const upCandle = db.prepare(`
+  INSERT INTO price_candles (model_id, t, open, high, low, close)
+  VALUES (@model_id, @t, @price, @price, @price, @price)
+  ON CONFLICT(model_id, t) DO UPDATE SET
+    high  = MAX(high, @price),
+    low   = MIN(low, @price),
+    close = @price
+`)
+
+// Recompute every model's price from its votes + token price. Returns
+// Map(modelId -> price). Writes a candle per model so charts have a point.
+export function recomputePrices() {
+  const rows = priceInputs()
+  const update = db.prepare('UPDATE models SET price = ? WHERE id = ?')
   const result = new Map()
-
+  const t = epochMinute()
   const apply = db.transaction(() => {
     for (const r of rows) {
-      const tokenPrice = r.api_price || 0
-      const raw = tokenPrice * eloFactor(r.elo) * PRICE_MULTIPLIER
-      const fundamental = +Math.max(
-        PRICE_FLOOR,
-        Math.min(PRICE_CEIL, raw)
-      ).toFixed(2)
-      update.run(fundamental, r.id)
-      result.set(r.id, fundamental)
+      const price = priceFor(r.vote_count, r.api_price)
+      update.run(price, r.id)
+      upCandle.run({ model_id: r.id, t, price })
+      result.set(r.id, price)
     }
   })
   apply()
   return result
 }
 
-// Box-Muller standard normal.
-function gaussian() {
-  let u = 0
-  let v = 0
-  while (u === 0) u = Math.random()
-  while (v === 0) v = Math.random()
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
+// Recompute a single model's price after its votes change, persist a candle,
+// and broadcast it live. Called by the vote route. Returns the new price.
+export function pushModelPrice(io, modelId) {
+  const r = db
+    .prepare(
+      `SELECT m.id, m.vote_count, s.api_price
+         FROM models m
+         LEFT JOIN model_signals s ON s.id = (
+           SELECT id FROM model_signals WHERE model_id = m.id
+            ORDER BY captured_at DESC, id DESC LIMIT 1
+         )
+        WHERE m.id = ?`
+    )
+    .get(modelId)
+  if (!r) return null
+
+  const price = priceFor(r.vote_count, r.api_price)
+  db.prepare('UPDATE models SET price = ? WHERE id = ?').run(price, r.id)
+  upCandle.run({ model_id: r.id, t: epochMinute(), price })
+  if (io) {
+    io.emit('prices', {
+      t: Date.now(),
+      models: [{ id: r.id, price, votes: r.vote_count || 0 }]
+    })
+  }
+  return price
 }
 
-function epochMinute() {
-  return Math.floor(Date.now() / 60000) * 60
-}
-
-// One simulated tick: drift toward (fundamental + votes×rate) + a volatility shock.
-function tickOnce(io) {
-  const models = db
-    .prepare('SELECT id, price, fundamental, volatility, vote_count FROM models')
-    .all()
-
-  const upModel = db.prepare('UPDATE models SET price = ? WHERE id = ?')
-  const upCandle = db.prepare(`
-    INSERT INTO price_candles (model_id, t, open, high, low, close)
-    VALUES (@model_id, @t, @price, @price, @price, @price)
-    ON CONFLICT(model_id, t) DO UPDATE SET
-      high  = MAX(high, @price),
-      low   = MIN(low, @price),
-      close = @price
-  `)
-
-  const t = epochMinute()
-  const payload = []
-
-  const run = db.transaction(() => {
-    for (const m of models) {
-      const fundamental = m.fundamental || m.price || PRICE_FLOOR
-      const votes = m.vote_count || 0
-      // Votes lift the target a flat amount above the signal-derived fair value.
-      const target = fundamental + votes * VOTE_RATE
-      const price = m.price || target
-      const drift = THETA * (target - price)
-      const shock = m.volatility * price * gaussian()
-      // Soft band hugs the (vote-adjusted) target so the chart breathes but tracks it.
-      const lo = target * 0.8
-      const hi = target * 1.2
-      let next = price + drift + shock
-      next = Math.min(hi, Math.max(lo, next))
-      next = +Math.max(1, next).toFixed(2)
-
-      upModel.run(next, m.id)
-      upCandle.run({ model_id: m.id, t, price: next })
-      payload.push({ id: m.id, price: next, votes })
-    }
-  })
-  run()
-
-  if (io) io.emit('prices', { t: Date.now(), models: payload })
-}
-
-let timer = null
+let rollTimer = null
 
 export function startPricing(io) {
-  recomputeFundamentals()
-  // Seed prices at fundamental on first boot, and set the day's reference close.
-  db.prepare(
-    'UPDATE models SET price = fundamental WHERE price IS NULL OR price = 0'
-  ).run()
-  db.prepare('UPDATE models SET prev_close = price').run()
+  // Price = votes × per-vote value. On a fresh launch that's $0 across the board.
+  recomputePrices()
+  // Seed the 24h reference once, so day-one change reads 0% until prices move.
+  db.prepare('UPDATE models SET prev_close = price WHERE prev_close = 0').run()
 
-  tickOnce(io)
-  timer = setInterval(() => tickOnce(io), TICK_MS)
-  return () => clearInterval(timer)
+  // Roll the 24h reference once a day so the "24h" column stays meaningful.
+  rollTimer = setInterval(
+    () => db.prepare('UPDATE models SET prev_close = price').run(),
+    24 * 60 * 60 * 1000
+  )
+
+  // Broadcast the opening board.
+  const models = db
+    .prepare('SELECT id, price, vote_count AS votes FROM models')
+    .all()
+  if (io) io.emit('prices', { t: Date.now(), models })
+
+  return () => clearInterval(rollTimer)
 }
 
 export function stopPricing() {
-  if (timer) clearInterval(timer)
+  if (rollTimer) clearInterval(rollTimer)
 }

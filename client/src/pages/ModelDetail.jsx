@@ -1,15 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronUp } from 'lucide-react'
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ReferenceLine
-} from 'recharts'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import { api } from '../lib/api.js'
 import { usePrices } from '../store/prices.jsx'
 import { useAuth } from '../store/auth.jsx'
@@ -17,11 +9,11 @@ import AnimatedNumber from '../components/AnimatedNumber.jsx'
 import VoteButton from '../components/VoteButton.jsx'
 import { money, num, pct, compact, upDown } from '../lib/format.js'
 
-// Live signals shown for transparency. ELO + API price feed the price formula;
-// the rest are context.
+// Live signals shown for transparency. API price scales each vote's value; the
+// rest are context only.
 const SIGNALS = [
-  { key: 'apiPrice', label: 'API $/Mtok', fmt: (v) => money(v), drives: true },
-  { key: 'elo', label: 'LMArena ELO', fmt: (v) => num(v, 0), drives: true },
+  { key: 'apiPrice', label: 'API $/Mtok', fmt: (v) => money(v), note: 'sets vote value' },
+  { key: 'elo', label: 'LMArena ELO', fmt: (v) => num(v, 0) },
   { key: 'usage', label: 'Usage share', fmt: (v) => `${num(v, 1)}%` },
   { key: 'bench', label: 'Benchmarks', fmt: (v) => `${num(v, 0)}/100` },
   { key: 'downloads', label: 'HF downloads', fmt: (v) => compact(v) }
@@ -37,7 +29,6 @@ export default function ModelDetail() {
   const [chart, setChart] = useState([])
   const [position, setPosition] = useState(null)
   const [voteRate, setVoteRate] = useState(5)
-  const [priceMultiplier, setPriceMultiplier] = useState(50)
   const [err, setErr] = useState('')
   const [shares, setShares] = useState(1)
   const [msg, setMsg] = useState(null)
@@ -59,8 +50,7 @@ export default function ModelDetail() {
       .then((d) => {
         setModel(d.model)
         setVoteRate(d.voteRate ?? 5)
-        setPriceMultiplier(d.priceMultiplier ?? 50)
-        setChart(d.candles.map((c) => ({ t: c.t * 1000, price: c.close })))
+        setChart((d.candles || []).map((c) => ({ t: c.t * 1000, price: c.close })))
         seeded.current = true
       })
       .catch((e) => setErr(e.message))
@@ -111,6 +101,9 @@ export default function ModelDetail() {
   if (!model) return <p className="text-slate-500">Loading…</p>
 
   const up = changePct >= 0
+  const perVote = model.perVoteValue ?? voteRate
+  const costMult = voteRate ? perVote / voteRate : 1
+  const canTrade = livePrice > 0
   const maxShares = user && livePrice ? Math.floor(user.cash / livePrice) : 0
   const estCost = (Number(shares) || 0) * (livePrice || 0)
 
@@ -153,100 +146,94 @@ export default function ModelDetail() {
             </div>
 
             <div className="h-72 mt-5 -mx-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={up ? '#27d18b' : '#fb5a6a'} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={up ? '#27d18b' : '#fb5a6a'} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="t"
-                    type="number"
-                    domain={['dataMin', 'dataMax']}
-                    tickFormatter={(t) =>
-                      new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    }
-                    stroke="#3a4a63"
-                    fontSize={11}
-                    minTickGap={48}
-                  />
-                  <YAxis
-                    domain={['auto', 'auto']}
-                    stroke="#3a4a63"
-                    fontSize={11}
-                    width={54}
-                    tickFormatter={(v) => `$${num(v, 0)}`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: '#0f1622',
-                      border: '1px solid #1e2a3d',
-                      borderRadius: 8,
-                      fontSize: 12
-                    }}
-                    labelFormatter={(t) => new Date(t).toLocaleTimeString()}
-                    formatter={(v) => [money(v), 'Price']}
-                  />
-                  <ReferenceLine
-                    y={model.fundamental}
-                    stroke="#f0c04e"
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.6}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="price"
-                    stroke={up ? '#27d18b' : '#fb5a6a'}
-                    strokeWidth={2}
-                    fill="url(#grad)"
-                    isAnimationActive={false}
-                    dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {chart.length >= 2 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={up ? '#27d18b' : '#fb5a6a'} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={up ? '#27d18b' : '#fb5a6a'} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="t"
+                      type="number"
+                      domain={['dataMin', 'dataMax']}
+                      tickFormatter={(t) =>
+                        new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      }
+                      stroke="#3a4a63"
+                      fontSize={11}
+                      minTickGap={48}
+                    />
+                    <YAxis
+                      domain={['auto', 'auto']}
+                      stroke="#3a4a63"
+                      fontSize={11}
+                      width={54}
+                      tickFormatter={(v) => `$${num(v, 0)}`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: '#0f1622',
+                        border: '1px solid #1e2a3d',
+                        borderRadius: 8,
+                        fontSize: 12
+                      }}
+                      labelFormatter={(t) => new Date(t).toLocaleTimeString()}
+                      formatter={(v) => [money(v), 'Price']}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="price"
+                      stroke={up ? '#27d18b' : '#fb5a6a'}
+                      strokeWidth={2}
+                      fill="url(#grad)"
+                      isAnimationActive={false}
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="grid h-full place-items-center text-center">
+                  <div>
+                    <div className="num text-2xl text-slate-500">{money(livePrice)}</div>
+                    <p className="mt-1 text-xs text-slate-600">
+                      No price history yet — votes will move this chart.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-slate-500 mt-2">
-              <span className="text-accent">— —</span> fundamental value {money(model.fundamental)} ·
-              the cost × quality fair price the market pulls back toward.
-            </p>
           </div>
 
           {/* Price breakdown */}
           <div className="card p-5">
             <h2 className="text-sm font-semibold text-white mb-1">Why this price</h2>
             <p className="text-xs text-slate-500 mb-4">
-              A model is worth its token economics × its quality, then the crowd adds
-              conviction. Fundamental = blended API price ($/Mtok) × quality (ELO) ×{' '}
-              {priceMultiplier}.
+              Price is what the crowd values this model at. It launches at $0 and rises{' '}
+              {money(perVote)} per vote — the {money(voteRate)} base scaled ×{num(costMult, 2)} by
+              this model's token price.
             </p>
 
             {/* The formula, as factor chips */}
             <div className="flex flex-wrap items-stretch gap-2 text-center">
-              <Factor
-                label="API $/Mtok"
-                value={model.tokenPrice != null ? money(model.tokenPrice) : '—'}
-              />
+              <Factor label="Votes" value={num(liveVotes, 0)} sub="community" />
               <Op>×</Op>
               <Factor
-                label="Quality (ELO)"
-                value={model.eloFactor != null ? `${num(model.eloFactor, 2)}×` : '1.00×'}
-                sub={model.signals.elo != null ? num(model.signals.elo, 0) : null}
+                label="Per vote"
+                value={money(perVote)}
+                sub={`${money(voteRate)} × ${num(costMult, 2)}`}
               />
-              <Op>×</Op>
-              <Factor label="Multiplier" value={`${priceMultiplier}`} />
               <Op>=</Op>
-              <Factor label="Fundamental" value={money(model.fundamental)} accent />
+              <Factor label="Price" value={money(livePrice)} accent />
             </div>
 
-            <div className="mt-3 flex items-center justify-between rounded-lg border border-up/25 bg-up/5 px-3 py-2 text-sm">
-              <span className="text-slate-300">
-                Fundamental {money(model.fundamental)} + {num(liveVotes, 0)} votes ×{' '}
-                {money(voteRate)}
-              </span>
-              <span className="num font-semibold text-up">+{money(liveVotes * voteRate)}</span>
-            </div>
+            {liveVotes === 0 && (
+              <div className="mt-3 rounded-lg border border-edge bg-ink/40 px-3 py-2 text-sm text-slate-400">
+                No votes yet — this model sits at {money(0)}. Be the first to value it.
+              </div>
+            )}
 
             {/* Live signals reference */}
             <div className="mt-5 pt-4 border-t border-edge">
@@ -259,9 +246,9 @@ export default function ModelDetail() {
                     <div key={s.key} className="bg-ink/60 border border-edge rounded-lg p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[11px] text-slate-400">{s.label}</span>
-                        {s.drives && (
+                        {s.note && (
                           <span className="text-[9px] uppercase tracking-wide text-accent/80 font-mono">
-                            drives price
+                            {s.note}
                           </span>
                         )}
                       </div>
@@ -316,13 +303,27 @@ export default function ModelDetail() {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <button disabled={busy} onClick={() => trade('buy')} className="btn-buy">
+              <button
+                disabled={busy || !canTrade}
+                onClick={() => trade('buy')}
+                className="btn-buy disabled:opacity-40"
+              >
                 Buy
               </button>
-              <button disabled={busy} onClick={() => trade('sell')} className="btn-sell">
+              <button
+                disabled={busy || !canTrade}
+                onClick={() => trade('sell')}
+                className="btn-sell disabled:opacity-40"
+              >
                 Sell
               </button>
             </div>
+
+            {!canTrade && (
+              <p className="text-xs text-slate-500 mt-3">
+                No price yet — this model needs votes before it can be traded.
+              </p>
+            )}
 
             {msg && (
               <p className={`text-sm mt-3 ${msg.type === 'ok' ? 'text-up' : 'text-down'}`}>
@@ -364,9 +365,7 @@ export default function ModelDetail() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="num text-3xl font-bold text-white">{num(liveVotes, 0)}</div>
-                <div className="text-xs text-slate-500">
-                  supporters · {money(liveVotes * voteRate)} of price
-                </div>
+                <div className="text-xs text-slate-500">supporters · {money(livePrice)} value</div>
               </div>
               <VoteButton
                 slug={slug}
@@ -378,7 +377,7 @@ export default function ModelDetail() {
               />
             </div>
             <p className="text-xs text-slate-500 mt-3">
-              Every vote adds {money(voteRate)} to this model's price. Toggle yours anytime.
+              Every vote adds {money(perVote)} to this model's price. Toggle yours anytime.
             </p>
           </div>
         </div>
