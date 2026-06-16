@@ -1,8 +1,15 @@
 # Bench Street — Internal Notes
 
-## Hardening pass + live charts (v1.4.0) — 2026-06-16 (not yet deployed)
+## Hardening pass + live charts (v1.4.0) — SHIPPED 2026-06-16
 Driven by an in-depth code review (see `TODO.md` — 54 items, prioritized). First sprint = P0 security
-landmines + the felt bugs + a starter test net. NOT yet pushed/deployed (awaiting go-ahead).
+landmines + the felt bugs + a starter test net. Commits f86bb8b + 8996cdb (lock fix). Deployed:
+Railway (server, deploy 2ccfb873, verified new code live via socket request-snapshot probe) + Vercel
+(client, benchstreet.vercel.app, 200). API: 66 models, max $340, voteRate 5.
+- **DEPLOY GOTCHA (for next time):** adding a dep on Windows (`npm i -D vitest`) wrote a lock file that
+  was internally inconsistent (missing @emnapi/* wasm transitive deps) → Railway's `npm ci` failed the
+  BUILD (deploy showed FAILED with 0 instances, old code kept serving, no runtime logs). Fix: clean
+  regen — `rm -rf node_modules package-lock.json && npm install`, then verify with `npm ci` LOCALLY
+  before pushing. Always run `npm ci` locally after touching server deps.
 - **New `server/src/config.js`** — single source of truth for the admin allowlist + JWT secret +
   STARTING_BALANCE. `ADMIN_USERNAMES` (csv) || `ADMIN_USERNAME` || 'sylvie'. `isAdminUsername()` is
   case-insensitive. JWT_SECRET **throws on boot** in production if it's unset/the dev default.
