@@ -1,36 +1,12 @@
 import db from './db.js'
+import { VOTE_RATE, costFactor, perVoteValue, priceFor } from './pricing-core.js'
 
 // --- Price model -----------------------------------------------------------
-// A model's price is how much the community values it: it launches at $0 and
-// moves only as people vote. Net sentiment (likes − dislikes) sets it, and each
-// vote is worth a base amount scaled by the model's real token economics — so a
-// vote on a pricey frontier model moves it more than a vote on a cheap one.
-//
-//   price        = max(0, likes − dislikes) × perVoteValue
-//   perVoteValue = VOTE_RATE × costFactor(blended $/Mtok)
-//   costFactor   = clamp(0.5, 2.0, tokenPrice ÷ COST_REF)
-//
+// The pure math (priceFor/perVoteValue/costFactor) lives in pricing-core.js so it
+// can be unit-tested without a DB. This module wires it to storage + sockets:
+// recompute prices from votes, persist candles, and broadcast changes live.
 // No simulation, no random walk — price only changes when a real vote lands.
-export const VOTE_RATE = 5 // base $ per vote
-const COST_REF = 5 // $/Mtok reference where costFactor === 1.0
-const COST_MIN = 0.5
-const COST_MAX = 2.0
-
-// How much each vote is worth on a model, scaled by its blended token price.
-// A null/unknown price means no economic tilt → factor 1.0.
-export function costFactor(tokenPrice) {
-  if (tokenPrice == null || Number.isNaN(tokenPrice)) return 1
-  return Math.max(COST_MIN, Math.min(COST_MAX, tokenPrice / COST_REF))
-}
-
-export function perVoteValue(tokenPrice) {
-  return +(VOTE_RATE * costFactor(tokenPrice)).toFixed(2)
-}
-
-// The price for a given net sentiment + token price. Net ≤ 0 → $0.
-export function priceFor(net, tokenPrice) {
-  return +(Math.max(0, net || 0) * perVoteValue(tokenPrice)).toFixed(2)
-}
+export { VOTE_RATE, costFactor, perVoteValue, priceFor }
 
 // Latest token price + current like/dislike tallies for every model.
 function priceInputs() {
@@ -111,19 +87,43 @@ export function pushModelPrice(io, modelId) {
   return price
 }
 
-let rollTimer = null
+let rollTimeout = null
+let rollInterval = null
+let candleTimer = null
+
+function msUntilNextUtcMidnight() {
+  const now = new Date()
+  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0)
+  return next - now.getTime()
+}
+
+function rollPrevClose() {
+  db.prepare('UPDATE models SET prev_close = price').run()
+}
+
+// Write a candle per model carrying the current close forward, so charts have a
+// point every minute even when nobody votes (prices persist between votes).
+const writeCandles = db.transaction((t) => {
+  for (const r of db.prepare('SELECT id, price FROM models').all()) {
+    upCandle.run({ model_id: r.id, t, price: r.price })
+  }
+})
 
 export function startPricing(io) {
-  // Price = votes × per-vote value. On a fresh launch that's $0 across the board.
+  // Price = (opening line + net votes) × per-vote value. Recompute from the votes.
   recomputePrices()
   // Seed the 24h reference once, so day-one change reads 0% until prices move.
   db.prepare('UPDATE models SET prev_close = price WHERE prev_close = 0').run()
 
-  // Roll the 24h reference once a day so the "24h" column stays meaningful.
-  rollTimer = setInterval(
-    () => db.prepare('UPDATE models SET prev_close = price').run(),
-    24 * 60 * 60 * 1000
-  )
+  // Roll the 24h reference at UTC midnight (not at an arbitrary boot-anchored time),
+  // then every 24h after, so the "24h" column means a real calendar day.
+  rollTimeout = setTimeout(() => {
+    rollPrevClose()
+    rollInterval = setInterval(rollPrevClose, 24 * 60 * 60 * 1000)
+  }, msUntilNextUtcMidnight())
+
+  // Keep candles flowing once a minute so the charts fill in over time.
+  candleTimer = setInterval(() => writeCandles(epochMinute()), 60_000)
 
   // Broadcast the opening board.
   const models = db
@@ -131,9 +131,12 @@ export function startPricing(io) {
     .all()
   if (io) io.emit('prices', { t: Date.now(), models })
 
-  return () => clearInterval(rollTimer)
+  return stopPricing
 }
 
 export function stopPricing() {
-  if (rollTimer) clearInterval(rollTimer)
+  if (rollTimeout) clearTimeout(rollTimeout)
+  if (rollInterval) clearInterval(rollInterval)
+  if (candleTimer) clearInterval(candleTimer)
+  rollTimeout = rollInterval = candleTimer = null
 }

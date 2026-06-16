@@ -1,9 +1,7 @@
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import db from './db.js'
-
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me'
-const STARTING_BALANCE = Number(process.env.STARTING_BALANCE || 100000)
+import { JWT_SECRET, STARTING_BALANCE, isAdminUsername } from './config.js'
 
 export function hashPassword(pw) {
   return bcrypt.hashSync(pw, 10)
@@ -15,17 +13,11 @@ export function signToken(user) {
   })
 }
 
-const ADMIN_USERNAMES = (process.env.ADMIN_USERNAMES || 'admin')
-  .split(',')
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean)
-
 export function createUser({ username, email, password }) {
   const now = new Date().toISOString()
-  // First registered user (or any name in ADMIN_USERNAMES) becomes admin.
-  const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n
-  const isAdmin =
-    userCount === 0 || ADMIN_USERNAMES.includes(String(username).toLowerCase()) ? 1 : 0
+  // Admin is granted ONLY to names on the configured allowlist — never by signup
+  // order, so a stranger registering first on a fresh DB can't seize the panel.
+  const isAdmin = isAdminUsername(username) ? 1 : 0
   const info = db
     .prepare(
       `INSERT INTO users (username, email, password_hash, cash, is_admin, created_at)

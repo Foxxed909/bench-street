@@ -5,6 +5,7 @@ import http from 'node:http'
 import { Server } from 'socket.io'
 
 import db from './db.js'
+import { rateLimit } from './ratelimit.js'
 import { seedDatabase } from './seed.js'
 import { startPricing } from './pricing.js'
 import { startSignalCron } from './ingest.js'
@@ -31,11 +32,17 @@ const seedResult = seedDatabase()
 console.log('[seed]', seedResult)
 
 const app = express()
+// Behind Railway's proxy: trust the first hop so req.ip reflects the real client
+// (X-Forwarded-For) — without this the rate limiter would bucket everyone together.
+app.set('trust proxy', 1)
 app.use(cors({ origin: ORIGIN }))
-app.use(express.json())
+app.use(express.json({ limit: '100kb' }))
+
+// Broad abuse cap on the whole API, plus a tight limit on auth (brute-force / spam).
+app.use('/api', rateLimit({ windowMs: 60_000, max: 300, key: 'api' }))
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }))
-app.use('/api/auth', authRoutes)
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, max: 60, key: 'auth' }), authRoutes)
 app.use('/api/models', modelRoutes)
 app.use('/api/trade', tradeRoutes)
 app.use('/api/portfolio', portfolioRoutes)
@@ -49,15 +56,18 @@ const io = new Server(server, { cors: { origin: ORIGIN } })
 // Make io reachable from routes (e.g. the vote route broadcasts price changes).
 app.set('io', io)
 
+const snapshotStmt = db.prepare(
+  `SELECT id, slug, ticker, price, prev_close,
+          like_count AS likes, dislike_count AS dislikes
+     FROM models`
+)
 io.on('connection', (socket) => {
-  const models = db
-    .prepare(
-      `SELECT id, slug, ticker, price, prev_close,
-              like_count AS likes, dislike_count AS dislikes
-         FROM models`
-    )
-    .all()
-  socket.emit('snapshot', { t: Date.now(), models })
+  // Emit once on connect, and again whenever the client asks. The client requests
+  // a snapshot on (re)connect so it can never miss the opening board to a race
+  // between the socket handshake and its React listener mounting.
+  const sendSnapshot = () => socket.emit('snapshot', { t: Date.now(), models: snapshotStmt.all() })
+  sendSnapshot()
+  socket.on('request-snapshot', sendSnapshot)
 })
 
 startPricing(io)

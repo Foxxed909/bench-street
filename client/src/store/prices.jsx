@@ -38,11 +38,17 @@ export function PricesProvider({ children }) {
     }
     const onPrices = (p) => apply(p.models)
     const onSnapshot = (s) => apply(s.models)
+    // Ask for a fresh snapshot on every (re)connect — and immediately if the socket
+    // already connected before this effect mounted — so the board is never empty.
+    const onConnect = () => socket.emit('request-snapshot')
     socket.on('prices', onPrices)
     socket.on('snapshot', onSnapshot)
+    socket.on('connect', onConnect)
+    if (socket.connected) socket.emit('request-snapshot')
     return () => {
       socket.off('prices', onPrices)
       socket.off('snapshot', onSnapshot)
+      socket.off('connect', onConnect)
     }
   }, [])
 

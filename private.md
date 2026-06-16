@@ -1,5 +1,38 @@
 # Bench Street — Internal Notes
 
+## Hardening pass + live charts (v1.4.0) — 2026-06-16 (not yet deployed)
+Driven by an in-depth code review (see `TODO.md` — 54 items, prioritized). First sprint = P0 security
+landmines + the felt bugs + a starter test net. NOT yet pushed/deployed (awaiting go-ahead).
+- **New `server/src/config.js`** — single source of truth for the admin allowlist + JWT secret +
+  STARTING_BALANCE. `ADMIN_USERNAMES` (csv) || `ADMIN_USERNAME` || 'sylvie'. `isAdminUsername()` is
+  case-insensitive. JWT_SECRET **throws on boot** in production if it's unset/the dev default.
+- **#1 admin (security)** — removed `userCount===0` first-signup auto-admin from auth.js `createUser`;
+  now `isAdminUsername(username)` only. db.js boot block reconciles ALL allowlisted names (idempotent),
+  imports ADMIN_USERNAMES from config (no circular — config imports nothing). auth.js imports
+  JWT_SECRET/STARTING_BALANCE/isAdminUsername from config.
+- **#2 JWT** — fail-fast in config.js (covered above).
+- **#3 rate limiting** — new dependency-free `server/src/ratelimit.js` (fixed-window, in-memory, keyed
+  by `req.ip`; `.unref()`'d sweep). index.js: `app.set('trust proxy', 1)` (Railway proxy → real IP),
+  global `/api` 300/min, `/api/auth` 60/15min. Per-instance only — note for any multi-dyno future.
+- **#4 validation** — routes/auth.js `validateSignup()`: username 3–20 + `/^[A-Za-z0-9_-]+$/`, password
+  6–200, optional email regex+len. Signup uniqueness now `LOWER(username)` (case-insensitive).
+- **#6 refresh broadcast** — admin.js passes `{ io: req.app.get('io') }` into ingestSignals.
+- **#7 snapshot race** — index.js extracts `snapshotStmt` + `sendSnapshot`, handles `request-snapshot`;
+  prices.jsx emits `request-snapshot` on `connect` and immediately if `socket.connected` on mount.
+- **#8 candles** — pricing.js `writeCandles` tx + `candleTimer` setInterval 60s (carries close forward).
+- **#9 prev_close** — pricing.js: `msUntilNextUtcMidnight()` setTimeout→setInterval(24h); stopPricing
+  clears all three timers (rollTimeout/rollInterval/candleTimer).
+- **Pricing refactor** — pure math extracted to `server/src/pricing-core.js` (VOTE_RATE/costFactor/
+  perVoteValue/priceFor, zero imports); pricing.js re-exports them so existing importers are unchanged.
+- **#45 body limit** — `express.json({ limit: '100kb' })`.
+- **Tests (#17/#18)** — added vitest (server devDep). `server/test/`: pricing-core (clamps, per-vote,
+  priceFor net≤0→$0), config (isAdminUsername allowlist = the security assertion), battles (eloWinProb
+  symmetry/edge). **18 tests green.** `npm test` / `npm run test:watch`.
+- **Verified locally**: server boots (seed idempotent, 66 models, max $340, /api/health ok), client
+  builds (bundle 676kb — pre-existing Recharts warning, TODO P3). NOT deployed.
+- **Still open from review**: #5 (confirm Railway persistent volume — CRITICAL, needs user/Railway),
+  #19–21 (settlement/vote-toggle/seed integration tests need a DB harness), plus all P2/P3.
+
 ## Quality opening line + design overhaul (v1.3.0) — SHIPPED 2026-06-15
 Driven by a hands-on tester pass (Playwright: signup→vote→trade→all tabs→mobile). Top finding was the
 all-$0 dead board; user chose "seed a quality opening line" via AskUserQuestion.

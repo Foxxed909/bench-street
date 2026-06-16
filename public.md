@@ -1,5 +1,23 @@
 # Bench Street — Public Changelog
 
+## v1.4.0 — Hardening pass + live charts (2026-06-16)
+
+### Security
+- **Admin is now allowlist-only.** Whoever signs up first is no longer made an admin — the role is
+  granted strictly to configured names. Closes an account-takeover hole on fresh deploys.
+- **Stronger sign-up rules + abuse protection.** Usernames are validated (3–20 chars, safe
+  characters), emails are format-checked, and the API now rate-limits to stop brute-force and spam.
+
+### Fixes
+- **Charts fill in.** Prices now record a data point every minute, so the floor sparklines and model
+  charts actually have history to show instead of sitting flat.
+- **The board never loads empty.** Fixed a timing bug where a fast connection could miss the opening
+  snapshot and show nothing until the first price move.
+- **"24h" means a real day.** The daily reference now rolls at midnight (UTC) instead of whenever the
+  server last restarted.
+- **Admin "refresh signals" now updates everyone live**, instead of going stale until the next
+  automatic refresh.
+
 ## v1.3.0 — Quality opening line + design overhaul (2026-06-15)
 
 ### Features
