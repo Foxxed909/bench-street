@@ -1,5 +1,39 @@
 # Bench Street — Internal Notes
 
+## Roster + market-clarity pass (v1.5.0) — 2026-06-20
+Triggered by an external blind product audit (public-surface only — couldn't log in, so it
+guessed the backend and ~half its P0s were already shipped). See `TODO.md` "External product
+audit" section for the full triage. Fixed the genuinely-valid, fixable items:
+- **Roster (A1)** — added Gemini Omni, Muse Spark (Meta), GLM-5.2 (Zhipu), Command A+ + North
+  Mini Code (Cohere) to `seed.js` VARIANTS. Single-tier (not in REASONING set → no low/med/high
+  expansion). Not in PROVIDER_IDS, so they sit on curated seed prices (same as other VARIANTS —
+  see open TODO #11). Roster already had Fable 5/Mythos 5 (suspended) + Grok 4.3.
+- **Arena empty-pool (A2)** — root cause: auto-created battles open at `pool_a/pool_b = 0,0`
+  (`battles.js:74`), and `shape()` did `pool_a+pool_b || 1`, leaking a fake `$1` pool → UI showed
+  `0% · 1.00×`. Fix: `shape()` returns real `pool` (0 when empty) + `hasBets` + `traders` (distinct
+  bettors). Arena.jsx Fighter shows `eloProb% est` + "No bets yet" until `hasBets`, then live pool +
+  backer count.
+- **Top-mover dead state (A3)** — MarketStats.jsx: pick biggest ABS mover, but null it if `|cp| <=
+  0.01`; render a "Flat — no movement yet" tile instead of crowning `+0.00%`.
+- **Predictions liquidity (A4)** — markets.js `withOdds` returns `traders` (distinct bettors) and
+  real `volume`/`pool` (was `|| 1`). Predictions.jsx shows pool + trader count per card + exact UTC
+  close on hover.
+- **DEFERRED:** A10 (separate fundamentals from price via AMM/LMSR) is a real rearchitecture —
+  flagged as a product decision for Nifemi, NOT started. Plus mobile/a11y/news-tape/indices.
+
+### TODO #5 — PERSISTENT VOLUME — FIXED 2026-06-20 (was the real landmine)
+`railway volume list` → **"No volumes found"**: prod SQLite was on ephemeral fs, wiped every deploy.
+Fix (all from `server/`, service had to be linked first — project was linked but "Service: None"):
+1. `db.js` now reads `process.env.DATA_DIR || <../data>` for the SQLite dir (so the path doesn't
+   depend on where Railpack lands the code; `rootDirectory` is null on this service).
+2. `railway link --project 189feb6b… --environment production --service bench-street-api` (link service).
+3. `railway volume add --mount-path /data` → volume `bench-street-api-volume` (id e91f2161…).
+   **GOTCHA:** run volume/var commands from **PowerShell**, not Git Bash — MSYS mangles `/data` into
+   a Windows path (`C:/Program Files/Git/data`) → "Mount path must start with a /".
+4. `railway variables set DATA_DIR=/data --skip-deploys`.
+5. Deploy new code (reads DATA_DIR) → DB now lives on the volume at `/data/bench-street.db`, persists
+   across deploys. NOTE: this deploy resets the DB ONE last time (ephemeral → volume); fine pre-launch.
+
 ## Hardening pass + live charts (v1.4.0) — SHIPPED 2026-06-16
 Driven by an in-depth code review (see `TODO.md` — 54 items, prioritized). First sprint = P0 security
 landmines + the felt bugs + a starter test net. Commits f86bb8b + 8996cdb (lock fix). Deployed:

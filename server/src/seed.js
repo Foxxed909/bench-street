@@ -48,7 +48,12 @@ const VARIANTS = [
   { slug: 'gemini-3-5-pro',   name: 'Gemini 3.5 Pro',   company: 'Google',    ticker: 'GEM35P', open: 0, color: '#4285f4', elo: 1412, usage: 0, bench: 93, downloads: null, apiPrice: 7.5,  vol: 0.010, released: '2026-04-15' },
   { slug: 'gemini-3-5-flash', name: 'Gemini 3.5 Flash', company: 'Google',    ticker: 'GEM35F', open: 0, color: '#3b78e0', elo: 1352, usage: 0, bench: 86, downloads: null, apiPrice: 0.6,  vol: 0.011, released: '2026-04-15' },
   { slug: 'claude-fable-5',   name: 'Claude Fable 5',   company: 'Anthropic', ticker: 'FABL5',  open: 0, color: '#d97757', elo: 1440, usage: 0, bench: 96, downloads: null, apiPrice: 20.0, vol: 0.010, released: '2026-06-09', status: 'suspended', statusNote: SUSPENDED_NOTE },
-  { slug: 'claude-mythos-5',  name: 'Claude Mythos 5',  company: 'Anthropic', ticker: 'MYTH5',  open: 0, color: '#b5532f', elo: 1450, usage: 0, bench: 97, downloads: null, apiPrice: 22.0, vol: 0.010, released: '2026-06-09', status: 'suspended', statusNote: SUSPENDED_NOTE }
+  { slug: 'claude-mythos-5',  name: 'Claude Mythos 5',  company: 'Anthropic', ticker: 'MYTH5',  open: 0, color: '#b5532f', elo: 1450, usage: 0, bench: 97, downloads: null, apiPrice: 22.0, vol: 0.010, released: '2026-06-09', status: 'suspended', statusNote: SUSPENDED_NOTE },
+  { slug: 'gemini-omni',      name: 'Gemini Omni',      company: 'Google',    ticker: 'GEMOM',  open: 0, color: '#4285f4', elo: 1430, usage: 0, bench: 95, downloads: null,     apiPrice: 9.0, vol: 0.011, released: '2026-05-20' },
+  { slug: 'muse-spark',       name: 'Muse Spark',       company: 'Meta',      ticker: 'MUSE',   open: 1, color: '#1877f2', elo: 1361, usage: 0, bench: 88, downloads: 5200000, apiPrice: 0.5, vol: 0.013, released: '2026-04-08' },
+  { slug: 'glm-5-2',          name: 'GLM-5.2',          company: 'Zhipu AI',  ticker: 'GLM52',  open: 1, color: '#2f6fed', elo: 1368, usage: 0, bench: 89, downloads: 6100000, apiPrice: 0.5, vol: 0.013, released: '2026-06-15' },
+  { slug: 'command-a-plus',   name: 'Command A+',       company: 'Cohere',    ticker: 'CMDAP',  open: 0, color: '#39c5bb', elo: 1305, usage: 0, bench: 82, downloads: null,     apiPrice: 3.0, vol: 0.011, released: '2026-05-20' },
+  { slug: 'north-mini-code',  name: 'North Mini Code',  company: 'Cohere',    ticker: 'NMINI',  open: 0, color: '#2aa39a', elo: 1284, usage: 0, bench: 84, downloads: null,     apiPrice: 1.0, vol: 0.012, released: '2026-06-09' }
 ]
 
 // Reasoning models expose a low/medium/high effort selector. We list each effort as its

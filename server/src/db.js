@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url'
 import { ADMIN_USERNAMES } from './config.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const dataDir = path.join(__dirname, '..', 'data')
+// DATA_DIR lets the deploy point the SQLite file at a persistent volume (Railway
+// mounts one at an absolute path). Falls back to a local ./data dir for dev.
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data')
 fs.mkdirSync(dataDir, { recursive: true })
 
 const db = new Database(path.join(dataDir, 'bench-street.db'))

@@ -88,7 +88,7 @@ export default function Arena() {
   )
 }
 
-function Fighter({ side, selected, onSelect, settled, disabled }) {
+function Fighter({ side, selected, onSelect, settled, disabled, hasBets }) {
   const win = settled && side.won
   const lose = settled && !side.won
   return (
@@ -117,9 +117,17 @@ function Fighter({ side, selected, onSelect, settled, disabled }) {
       </div>
       <div className="text-[11px] text-slate-500 font-mono mt-0.5">Elo {num(side.elo, 0)}</div>
       <div className="mt-2 flex items-center justify-center gap-1.5 text-xs">
-        <span className="font-mono text-white">{side.impliedPct}%</span>
-        <span className="text-slate-600">·</span>
-        <span className="font-mono text-slate-400">{num(side.payout, 2)}×</span>
+        {hasBets ? (
+          <>
+            <span className="font-mono text-white">{side.impliedPct}%</span>
+            <span className="text-slate-600">·</span>
+            <span className="font-mono text-slate-400">{num(side.payout, 2)}×</span>
+          </>
+        ) : (
+          <span className="font-mono text-slate-400">
+            {side.eloProb}% <span className="text-slate-600">est</span>
+          </span>
+        )}
       </div>
     </button>
   )
@@ -181,9 +189,9 @@ function BattleCard({ battle, user, onChange }) {
       </div>
 
       <div className="flex items-stretch gap-2">
-        <Fighter side={a} selected={side === 'a'} onSelect={() => setSide('a')} settled={settled} disabled={!open} />
+        <Fighter side={a} selected={side === 'a'} onSelect={() => setSide('a')} settled={settled} disabled={!open} hasBets={battle.hasBets} />
         <div className="flex items-center text-slate-600 font-bold text-xs">VS</div>
-        <Fighter side={b} selected={side === 'b'} onSelect={() => setSide('b')} settled={settled} disabled={!open} />
+        <Fighter side={b} selected={side === 'b'} onSelect={() => setSide('b')} settled={settled} disabled={!open} hasBets={battle.hasBets} />
       </div>
 
       <div className="flex items-center justify-between text-[11px] text-slate-500 mt-3">
@@ -191,7 +199,13 @@ function BattleCard({ battle, user, onChange }) {
           <Zap size={11} className="text-accent" /> Elo favorite: {a.eloProb >= b.eloProb ? a.ticker : b.ticker}{' '}
           {Math.max(a.eloProb, b.eloProb)}%
         </span>
-        <span>pool {money(battle.pool)}</span>
+        {battle.hasBets ? (
+          <span>
+            pool {money(battle.pool)} · {battle.traders} {battle.traders === 1 ? 'backer' : 'backers'}
+          </span>
+        ) : (
+          <span>No bets yet</span>
+        )}
       </div>
 
       <div className="mt-auto pt-4">

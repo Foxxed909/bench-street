@@ -1,5 +1,21 @@
 # Bench Street — Public Changelog
 
+## v1.5.0 — Roster refresh + clearer market reads (2026-06-20)
+
+### Features
+- **Newest models added.** Gemini Omni, Meta's Muse Spark, GLM-5.2, Cohere Command A+, and North
+  Mini Code now trade on the floor alongside the rest of the lineup.
+- **Predictions show real depth.** Each market now displays its pool size and how many traders are
+  in — a "70% from 3 people" reads very differently from "70% from 3,000," and now you can tell.
+  Close times carry an exact UTC timestamp on hover.
+
+### Fixes
+- **Arena no longer shows "0% · 1.00×" on fresh matchups.** Before any bets are placed, cards now
+  show the Elo win-estimate and a plain "No bets yet" instead of a meaningless zero pool. Once
+  backing starts, you see the live pool and backer count.
+- **The market summary stops crowning a "Top mover +0.00%."** When nothing has actually moved, the
+  tile reads "Flat — no movement yet" instead of faking activity.
+
 ## v1.4.0 — Hardening pass + live charts (2026-06-16)
 
 ### Security

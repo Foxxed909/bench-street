@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, ArrowDownRight, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, ChevronUp, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { usePrices } from '../store/prices.jsx'
 import AnimatedNumber from './AnimatedNumber.jsx'
 import Sparkline from './Sparkline.jsx'
@@ -30,7 +30,10 @@ export default function MarketStats({ models }) {
   const indexCp = base ? ((index - base) / base) * 100 : 0
   const gainers = tradeable.filter((m) => m.cp > 0.01).length
   const losers = tradeable.filter((m) => m.cp < -0.01).length
-  const topMover = [...tradeable].sort((a, b) => b.cp - a.cp)[0]
+  // Biggest absolute mover, but only if it actually moved — otherwise the tile
+  // would crown something "+0.00%" and read as a frozen board.
+  const moved = [...tradeable].sort((a, b) => Math.abs(b.cp) - Math.abs(a.cp))[0]
+  const topMover = moved && Math.abs(moved.cp) > 0.01 ? moved : null
   const topRated = [...tradeable].sort((a, b) => b.net - a.net)[0]
 
   useEffect(() => {
@@ -86,13 +89,23 @@ export default function MarketStats({ models }) {
       </div>
 
       {/* Four equal stat tiles */}
-      <ModelTile
-        label="Top mover"
-        model={topMover}
-        icon={topMover?.cp >= 0 ? ArrowUpRight : ArrowDownRight}
-        value={pct(topMover?.cp || 0)}
-        tone={upDown(topMover?.cp || 0)}
-      />
+      {topMover ? (
+        <ModelTile
+          label="Top mover"
+          model={topMover}
+          icon={topMover.cp >= 0 ? ArrowUpRight : ArrowDownRight}
+          value={pct(topMover.cp)}
+          tone={upDown(topMover.cp)}
+        />
+      ) : (
+        <div className="card flex flex-col justify-between p-4">
+          <div className="label flex items-center gap-1.5">
+            <Minus size={12} /> Top mover
+          </div>
+          <div className="num mt-2 text-2xl font-bold leading-none text-slate-400">Flat</div>
+          <div className="mt-1.5 text-[11px] text-slate-500">no movement yet</div>
+        </div>
+      )}
       <ModelTile
         label="Top rated"
         model={topRated}

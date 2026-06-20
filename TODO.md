@@ -9,6 +9,34 @@ Stack reviewed: server (Express 4 + better-sqlite3 + Socket.io + JWT), client
 
 ---
 
+## External product audit — 2026-06-20 (blind, public-surface only)
+
+An outside agent reviewed the live site without logging in. Useful as a fresh set of
+eyes, but ~half its P0s were already shipped (it couldn't see the backend). Triage:
+
+**Already done (audit didn't know):** zero-price trading is blocked (`trade.js:18-27`);
+market/battle deadlines are server-side (`markets.js:8-12,79`, `battles.js:18,81`);
+Fable 5 / Mythos 5 seeded as `suspended`, GPT-5.6 as `upcoming`, status system exists;
+money moves inside `db.transaction()` with the balance check inside (and better-sqlite3
+is synchronous single-threaded, so the "two concurrent orders both pass" TOCTOU can't
+happen). Model detail pages already exist (`ModelDetail.jsx`).
+
+**Fixed this pass (v1.5.0):**
+- [x] **A1. Roster gaps.** Added Gemini Omni, Muse Spark, GLM-5.2, Command A+, North Mini Code. (`server/src/seed.js`)
+- [x] **A2. Arena "0% · 1.00×" on empty pools.** Auto-created battles open at `pool 0,0` (`battles.js:74`); the UI now shows the Elo estimate + "No bets yet" until real bets land. (`client/src/pages/Arena.jsx`, `server/src/routes/battles.js` `hasBets`/`traders`)
+- [x] **A3. Dead "Top mover +0.00%".** Shows "Flat — no movement yet" when nothing moved. (`client/src/components/MarketStats.jsx`)
+- [x] **A4. Predictions liquidity.** Pool size + trader count on every card; exact UTC close on hover. (`client/src/pages/Predictions.jsx`, `server/src/routes/markets.js` `traders`)
+
+**Valid, deferred (genuine work, not a quick fix):**
+- [ ] **A5. Mobile redesign** — overlaps #32. Bottom nav + card collapse.
+- [ ] **A6. Contrast / a11y** — muted text on dark, focus states, reduced-motion, ticker pause.
+- [ ] **A7. Leaderboard empty-state** — seed labelled demo bots, "season begins at N traders."
+- [ ] **A8. News/event tape** — verified events attached to affected models ("Trade this event").
+- [ ] **A9. Capability indices** (coding/agent/reasoning/etc.) and lab ETFs.
+- [ ] **A10. Separate fundamentals from price (AMM/LMSR).** Today price moves on likes−dislikes anchored to bench. The audit wants an order-flow market maker with sentiment kept separate. This is a deliberate rearchitecture — a decision for Nifemi, not a bug. **Discuss before building.**
+
+---
+
 ## P0 — Security & correctness (do first)
 
 - [x] **1. Admin promotion is contradictory and unsafe.** `auth.js:createUser` promotes the *first* signup (`userCount === 0`) and anyone whose name is in `ADMIN_USERNAMES` (default `'admin'`). But `db.js:205` claims it "never silently promote a random first signup" and uses a *different* env var (`ADMIN_USERNAME`, default `'sylvie'`). On a fresh prod DB, whoever signs up first becomes admin, and anyone registering as `admin` becomes admin. Pick ONE source of truth: an env allowlist, never signup order. (`server/src/auth.js:18-36`, `server/src/db.js:204-212`)

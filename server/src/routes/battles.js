@@ -10,18 +10,24 @@ const modelStmt = db.prepare(`
          (SELECT elo FROM model_signals WHERE model_id = m.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS elo
     FROM models m WHERE m.id = ?
 `)
+const battleTraderStmt = db.prepare(
+  'SELECT COUNT(DISTINCT user_id) AS n FROM battle_bets WHERE battle_id = ?'
+)
 
 function shape(battle) {
   const a = modelStmt.get(battle.model_a_id)
   const b = modelStmt.get(battle.model_b_id)
-  const total = battle.pool_a + battle.pool_b || 1
+  const realPool = battle.pool_a + battle.pool_b
+  const total = realPool || 1
   const isOpen = battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
   return {
     id: battle.id,
     category: battle.category,
     status: battle.status === 'settled' ? 'settled' : isOpen ? 'open' : 'closing',
     closesAt: battle.closes_at,
-    pool: +total.toFixed(2),
+    pool: +realPool.toFixed(2),
+    hasBets: realPool > 0,
+    traders: battleTraderStmt.get(battle.id).n,
     winnerId: battle.winner_id,
     sides: [
       {

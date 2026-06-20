@@ -11,11 +11,17 @@ function effectiveStatus(market) {
   return 'open'
 }
 
+const traderCountStmt = db.prepare(
+  'SELECT COUNT(DISTINCT user_id) AS n FROM market_positions WHERE market_id = ?'
+)
+
 function withOdds(market) {
   const outcomes = db
     .prepare('SELECT id, label, pool FROM market_outcomes WHERE market_id = ? ORDER BY id')
     .all(market.id)
-  const total = outcomes.reduce((a, o) => a + o.pool, 0) || 1
+  const realTotal = outcomes.reduce((a, o) => a + o.pool, 0)
+  const total = realTotal || 1
+  const traders = traderCountStmt.get(market.id).n
   const winner = market.resolved_outcome_id
     ? outcomes.find((o) => o.id === market.resolved_outcome_id)
     : null
@@ -32,8 +38,9 @@ function withOdds(market) {
     resolvedOutcomeId: market.resolved_outcome_id,
     winnerLabel: winner?.label || null,
     isBinary: outcomes.length === 2 && outcomes[0].label === 'Yes' && outcomes[1].label === 'No',
-    volume: +total.toFixed(2),
-    pool: +total.toFixed(2),
+    traders,
+    volume: +realTotal.toFixed(2),
+    pool: +realTotal.toFixed(2),
     outcomes: outcomes.map((o) => ({
       id: o.id,
       label: o.label,

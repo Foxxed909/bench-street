@@ -99,7 +99,10 @@ function StatusBadge({ status, closesAt }) {
       </span>
     )
   return (
-    <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+    <span
+      className="flex items-center gap-1 text-[11px] text-slate-400 font-medium"
+      title={`Closes ${new Date(closesAt).toUTCString()}`}
+    >
       <Clock size={12} /> ends {new Date(closesAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
     </span>
   )
@@ -160,7 +163,7 @@ function MarketCard({ market, user, onChange }) {
         <StatusBadge status={market.status} closesAt={market.closesAt} />
       </div>
 
-      <div className="flex items-start gap-3 mb-4">
+      <div className="flex items-start gap-3 mb-2.5">
         <h3 className="text-white font-semibold leading-snug flex-1">{market.question}</h3>
         {isBinary && market.status !== 'resolved' && (
           <div className="text-right shrink-0">
@@ -168,6 +171,13 @@ function MarketCard({ market, user, onChange }) {
             <div className="text-[10px] text-slate-500 uppercase tracking-wide">chance</div>
           </div>
         )}
+      </div>
+
+      <div className="flex items-center gap-2 mb-3.5 text-[11px] text-slate-500">
+        <span className="font-mono text-slate-400">{money(market.volume)}</span> pool
+        <span className="text-slate-700">·</span>
+        <span className="font-mono text-slate-400">{market.traders}</span>{' '}
+        {market.traders === 1 ? 'trader' : 'traders'}
       </div>
 
       {market.status === 'resolved' ? (
