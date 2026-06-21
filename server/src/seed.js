@@ -298,6 +298,18 @@ export function seedDatabase({ force = false } = {}) {
     const idBySlug = db.prepare('SELECT id FROM models WHERE slug = ?')
     const setBenchmarks = db.prepare('UPDATE models SET benchmarks = ? WHERE id = ?')
     const signalCount = db.prepare('SELECT COUNT(*) AS n FROM model_signals WHERE model_id = ?')
+    const latestSignalId = db.prepare(
+      'SELECT id FROM model_signals WHERE model_id = ? ORDER BY captured_at DESC, id DESC LIMIT 1'
+    )
+    // On redeploy a model already has signal rows, so the baseline insert below is
+    // skipped and curated re-groundings would never reach it (ingest just carries
+    // the stale values forward). Refresh the latest signal so edited curated data
+    // propagates: bench + usage are always curated; api_price + downloads only when
+    // no live feed owns the model (PROVIDER_IDS) — otherwise the feed wins.
+    const refreshCurated = db.prepare('UPDATE model_signals SET bench = ?, usage = ? WHERE id = ?')
+    const refreshFull = db.prepare(
+      'UPDATE model_signals SET bench = ?, usage = ?, api_price = ?, downloads = ? WHERE id = ?'
+    )
     db.transaction(() => {
       for (const m of ROSTER) {
         // Opening line: tradeable models open at a price ranked by their benchmark
@@ -318,6 +330,13 @@ export function seedDatabase({ force = false } = {}) {
         const modelId = idBySlug.get(m.slug).id
         if (signalCount.get(modelId).n === 0) {
           insSignal.run(modelId, m.elo, m.usage, m.bench, m.downloads, m.apiPrice, now)
+        } else {
+          const sid = latestSignalId.get(modelId)?.id
+          if (sid) {
+            // PROVIDER_IDS[slug] present → live feed owns api_price/downloads.
+            if (PROVIDER_IDS[m.slug]) refreshCurated.run(m.bench, m.usage, sid)
+            else refreshFull.run(m.bench, m.usage, m.apiPrice, m.downloads, sid)
+          }
         }
         setBenchmarks.run(benchmarksFor(m), modelId)
       }
