@@ -1,5 +1,18 @@
 # Bench Street — Public Changelog
 
+## v1.5.1 — Worth re-grounded to real-world data (2026-06-21)
+
+### Improvements
+- **Valuations re-anchored to live leaderboards.** Pulled fresh standings (LMArena, Artificial
+  Analysis, SWE-bench, OpenRouter usage, HuggingFace downloads) and re-graded the roster against them.
+- **GLM-5.2 promoted.** It genuinely beats Gemini 3.1 Pro on the intelligence index, so its quality
+  score and price moved up to match — now the top open model by worth.
+- **Chinese open models read their real demand.** DeepSeek, Qwen, and GLM now show the usage share
+  they actually command (DeepSeek V4 is the single most-used model by token volume), instead of
+  sitting mid-pack.
+- **Blended API prices corrected** for the newer frontier tiers (GPT-5.5, Gemini 3.5 Flash, GLM-5.2)
+  so per-vote value reflects what each model really costs to run.
+
 ## v1.5.0 — Roster refresh + clearer market reads (2026-06-20)
 
 ### Features
