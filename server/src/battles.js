@@ -1,4 +1,5 @@
 import db from './db.js'
+import { allocateParimutuelPayouts } from './money.js'
 
 // Standard Elo expected score: P(A beats B).
 export function eloWinProb(eloA, eloB) {
@@ -27,8 +28,8 @@ export function settleBattle(battleId) {
   const pA = eloWinProb(eloA, eloB)
   const winnerId = Math.random() < pA ? battle.model_a_id : battle.model_b_id
 
-  const total = battle.pool_a + battle.pool_b
-  const winPool = winnerId === battle.model_a_id ? battle.pool_a : battle.pool_b
+  const total = Number(battle.pool_a || 0) + Number(battle.pool_b || 0)
+  const winPool = Number(winnerId === battle.model_a_id ? battle.pool_a : battle.pool_b) || 0
   const now = new Date().toISOString()
 
   const run = db.transaction(() => {
@@ -39,16 +40,21 @@ export function settleBattle(battleId) {
     // Initial battles may contain seeded liquidity. When nobody actually backed the
     // randomly selected winner, refund users instead of burning every real stake.
     const refundAll = bets.length > 0 && winningBets.length === 0
+    const payouts = allocateParimutuelPayouts(total, winPool, winningBets)
 
     for (const bet of bets) {
       let payout = 0
       if (refundAll) {
-        payout = +Number(bet.stake).toFixed(2)
-      } else if (bet.side_model_id === winnerId && winPool > 0) {
-        payout = +((bet.stake / winPool) * total).toFixed(2)
+        const stake = Number(bet.stake)
+        payout = Number.isFinite(stake) && stake > 0 ? Math.round((stake + Number.EPSILON) * 100) / 100 : 0
+      } else {
+        payout = payouts.get(bet.id) || 0
       }
       if (payout > 0) {
-        db.prepare('UPDATE users SET cash = ROUND(cash + ?, 2) WHERE id = ?').run(payout, bet.user_id)
+        db.prepare('UPDATE users SET cash = ROUND(cash + ?, 2) WHERE id = ?').run(
+          payout,
+          bet.user_id
+        )
       }
       db.prepare('UPDATE battle_bets SET settled = 1, payout = ? WHERE id = ?').run(payout, bet.id)
     }
