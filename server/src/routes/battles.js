@@ -2,6 +2,7 @@ import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth, requireAdmin } from '../auth.js'
 import { eloWinProb, settleBattle } from '../battles.js'
+import { parsePositiveMoney } from '../money.js'
 
 const router = Router()
 
@@ -78,8 +79,10 @@ router.get('/mine', requireAuth, (req, res) => {
 
 router.post('/:id/bet', requireAuth, (req, res) => {
   const { side, stake } = req.body || {}
-  const amount = Number(stake)
-  if (!(amount > 0)) return res.status(400).json({ error: 'stake must be > 0' })
+  const amount = parsePositiveMoney(stake)
+  if (amount == null) {
+    return res.status(400).json({ error: 'stake must be a finite amount of at least $0.01' })
+  }
   if (side !== 'a' && side !== 'b') return res.status(400).json({ error: "side must be 'a' or 'b'" })
 
   const battle = db.prepare('SELECT * FROM battles WHERE id = ?').get(req.params.id)
@@ -93,9 +96,12 @@ router.post('/:id/bet', requireAuth, (req, res) => {
   try {
     db.transaction(() => {
       const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-      if (cash < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
-      db.prepare('UPDATE users SET cash = cash - ? WHERE id = ?').run(amount, req.user.id)
-      db.prepare(`UPDATE battles SET ${poolCol} = ${poolCol} + ? WHERE id = ?`).run(amount, battle.id)
+      if (cash + 1e-9 < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+      db.prepare('UPDATE users SET cash = ROUND(cash - ?, 2) WHERE id = ?').run(amount, req.user.id)
+      db.prepare(`UPDATE battles SET ${poolCol} = ROUND(${poolCol} + ?, 2) WHERE id = ?`).run(
+        amount,
+        battle.id
+      )
       db.prepare(
         `INSERT INTO battle_bets (user_id, battle_id, side_model_id, stake, created_at)
          VALUES (?, ?, ?, ?, ?)`
@@ -106,14 +112,17 @@ router.post('/:id/bet', requireAuth, (req, res) => {
   }
 
   const fresh = db.prepare('SELECT * FROM battles WHERE id = ?').get(battle.id)
+  const shaped = shape(fresh)
   const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-  res.json({ ok: true, battle: shape(fresh), cash })
+  req.app.get('io')?.emit('battle:updated', { id: battle.id, battle: shaped })
+  res.json({ ok: true, battle: shaped, cash })
 })
 
 // Admin: force-settle a battle immediately (otherwise the auto-settler handles it).
 router.post('/:id/settle', requireAdmin, (req, res) => {
   const settled = settleBattle(Number(req.params.id))
   if (!settled) return res.status(400).json({ error: 'could not settle (already settled?)' })
+  req.app.get('io')?.emit('battle:settled', { id: settled.id, winnerId: settled.winner_id })
   res.json({ ok: true, battle: shape(settled) })
 })
 
