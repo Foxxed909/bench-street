@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth } from '../auth.js'
+import { calculateTradeTotal, parsePositiveShares } from '../validation.js'
 
 const router = Router()
 
@@ -10,8 +11,12 @@ router.post('/', requireAuth, (req, res) => {
   if (side !== 'buy' && side !== 'sell') {
     return res.status(400).json({ error: "side must be 'buy' or 'sell'" })
   }
-  const qty = Number(shares)
-  if (!(qty > 0)) return res.status(400).json({ error: 'shares must be > 0' })
+  const qty = parsePositiveShares(shares)
+  if (qty == null) {
+    return res.status(400).json({
+      error: 'shares must be a positive finite number with at most 6 decimal places'
+    })
+  }
 
   const model = db.prepare('SELECT * FROM models WHERE slug = ?').get(slug)
   if (!model) return res.status(404).json({ error: 'model not found' })
@@ -25,7 +30,10 @@ router.post('/', requireAuth, (req, res) => {
   if (!(price > 0)) {
     return res.status(400).json({ error: 'no price yet — this model needs votes first' })
   }
-  const total = +(qty * price).toFixed(2)
+  const total = calculateTradeTotal(qty, price)
+  if (total == null) {
+    return res.status(400).json({ error: 'trade value must be at least $0.01' })
+  }
   const userId = req.user.id
 
   try {
@@ -36,7 +44,7 @@ router.post('/', requireAuth, (req, res) => {
 
       if (side === 'buy') {
         const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(userId).cash
-        if (cash < total) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+        if (cash < total) throw Object.assign(new Error('insufficient funds'), { status: 400 })
 
         if (holding) {
           const newShares = holding.shares + qty
@@ -54,7 +62,7 @@ router.post('/', requireAuth, (req, res) => {
         db.prepare('UPDATE users SET cash = cash - ? WHERE id = ?').run(total, userId)
       } else {
         if (!holding || holding.shares < qty - 1e-9) {
-          throw Object.assign(new Error('not enough shares'), { code: 400 })
+          throw Object.assign(new Error('not enough shares'), { status: 400 })
         }
         const remaining = holding.shares - qty
         if (remaining <= 1e-6) {
@@ -72,7 +80,8 @@ router.post('/', requireAuth, (req, res) => {
     })
     tx()
   } catch (e) {
-    return res.status(e.code || 400).json({ error: e.message || 'trade failed' })
+    const status = Number.isInteger(e?.status) ? e.status : 500
+    return res.status(status).json({ error: status === 500 ? 'trade failed' : e.message })
   }
 
   const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(userId).cash
