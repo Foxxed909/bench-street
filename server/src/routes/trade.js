@@ -2,10 +2,12 @@ import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth } from '../auth.js'
 import { calculateTradeTotal, parsePositiveShares } from '../money.js'
+import { executionPriceFor } from '../pricing.js'
 
 const router = Router()
 
-// Buy/sell a model at the current live price. Trades don't move price — votes do.
+// Buy/sell a model at the current quote. The public board reflects every vote, but
+// this account's own stance is removed from its executable price to prevent self-dealing.
 router.post('/', requireAuth, (req, res) => {
   const { slug, side, shares } = req.body || {}
   if (typeof slug !== 'string' || !slug.trim()) {
@@ -21,22 +23,42 @@ router.post('/', requireAuth, (req, res) => {
     })
   }
 
-  const model = db.prepare('SELECT * FROM models WHERE slug = ?').get(slug.trim())
+  const userId = req.user.id
+  const model = db
+    .prepare(
+      `SELECT m.*, s.api_price, COALESCE(v.value, 0) AS my_vote
+         FROM models m
+         LEFT JOIN model_signals s ON s.id = (
+           SELECT id FROM model_signals WHERE model_id = m.id
+            ORDER BY captured_at DESC, id DESC LIMIT 1
+         )
+         LEFT JOIN votes v ON v.model_id = m.id AND v.user_id = ?
+        WHERE m.slug = ?`
+    )
+    .get(userId, slug.trim())
   if (!model) return res.status(404).json({ error: 'model not found' })
   if (model.status && model.status !== 'active') {
     const why = model.status === 'suspended' ? 'suspended' : 'not released yet'
     return res.status(400).json({ error: `this model is ${why} and cannot be traded` })
   }
 
-  const price = Number(model.price)
+  const publicPrice = Number(model.price)
+  const price = executionPriceFor({
+    baseVotes: model.base_votes,
+    likes: model.like_count,
+    dislikes: model.dislike_count,
+    myVote: model.my_vote,
+    tokenPrice: model.api_price
+  })
   if (!Number.isFinite(price) || !(price > 0)) {
-    return res.status(400).json({ error: 'no valid price yet — this model needs votes first' })
+    return res.status(400).json({
+      error: 'no valid executable price yet — this model needs more independent support'
+    })
   }
   const total = calculateTradeTotal(qty, price)
   if (total == null) {
     return res.status(400).json({ error: 'trade value must settle to at least $0.01' })
   }
-  const userId = req.user.id
 
   try {
     const tx = db.transaction(() => {
@@ -100,7 +122,18 @@ router.post('/', requireAuth, (req, res) => {
   }
 
   const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(userId).cash
-  res.json({ ok: true, executed: { side, shares: qty, price, total }, cash })
+  res.json({
+    ok: true,
+    executed: {
+      side,
+      shares: qty,
+      price,
+      publicPrice,
+      selfVoteExcluded: model.my_vote !== 0,
+      total
+    },
+    cash
+  })
 })
 
 export default router
