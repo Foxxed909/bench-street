@@ -80,6 +80,17 @@ describe('allocateParimutuelPayouts', () => {
     expect(payouts.get(1)).toBe(190.91)
   })
 
+  it('keeps cent allocation exact near the configured transaction cap', () => {
+    const payouts = allocateParimutuelPayouts(1_000_000_000, 500_000_000, [
+      { id: 'a', stake: 333_333_333.33 },
+      { id: 'b', stake: 166_666_666.67 }
+    ])
+
+    expect(payouts.get('a')).toBe(666_666_666.66)
+    expect(payouts.get('b')).toBe(333_333_333.34)
+    expect(payouts.get('a') + payouts.get('b')).toBe(1_000_000_000)
+  })
+
   it('returns zero payouts when there are no actual winners', () => {
     expect(allocateParimutuelPayouts(100, 50, []).size).toBe(0)
   })
