@@ -1,49 +1,96 @@
 # 📈 Bench Street
 
-A play-money exchange where you trade **real AI models like stocks**. Prices are driven
-by a weighted index of real performance signals (LMArena ELO, OpenRouter usage,
-benchmarks, downloads, API price) plus live **player demand** — when traders pile into a
-model, its price climbs above fundamental; when they sell, it sinks. There's also a
-parimutuel **prediction market** for betting on AI events.
+Bench Street is a play-money exchange where people trade **AI models like stocks**, vote on
+which models deserve higher valuations, and make predictions about AI releases, benchmarks,
+and head-to-head model matchups.
 
-> Play money only. Prices are simulated. Not investment advice.
+Each account starts with **$100,000 in play credits**. No real money is accepted and nothing
+in the app is investment advice.
+
+## What drives a model price
+
+A model opens with a quality-ranked baseline derived from its curated benchmark score. The
+community then moves that price with one toggleable like or dislike per user:
+
+```text
+price = max(0, opening vote-equivalent + likes - dislikes) × per-vote value
+```
+
+The per-vote value starts at `$5` and is scaled between `0.5×` and `2×` by the model's blended
+API token price. Trades affect portfolios and P&L, but **trades do not move the quoted price**.
+Votes and refreshed token-price signals do.
+
+The app also includes:
+
+- a live Floor with roughly 70 model and effort-tier listings
+- model pages with benchmarks, signals, comments, watchlists, and trading
+- portfolios, trade history, and a net-worth leaderboard
+- parimutuel prediction markets for AI events
+- an Arena with Elo-weighted head-to-head model battles
+- Socket.io updates for prices and market settlement events
 
 ## Stack
-- **Client:** React 18 · Vite · Tailwind · Recharts · socket.io-client
-- **Server:** Node · Express · better-sqlite3 · Socket.io · JWT
+
+- **Client:** React 18, Vite, Tailwind CSS, Recharts, socket.io-client
+- **Server:** Node.js, Express, better-sqlite3, Socket.io, JWT, bcrypt
+- **Production:** Vercel frontend plus an always-on Railway API with a persistent SQLite volume
+
+## Production
+
+- Frontend: `https://benchstreet.vercel.app`
+- API: `https://bench-street-api-production.up.railway.app`
+
+The frontend and API are intentionally separate. The API owns SQLite, Socket.io, scheduled
+signal ingestion, candle recording, battle settlement, and prediction-market resolution, so it
+must not be deployed as a stateless Vercel function.
 
 ## Quickstart
-```bash
-npm run install:all     # install root + server + client deps
-npm run dev             # server on :4000, client on :5173 (Vite proxies /api + /socket.io)
-```
-Then open http://localhost:5173 and create an account — you start with $100,000 in credits.
 
-To reseed the database from scratch:
+```bash
+npm run install:all
+npm run dev
+```
+
+The server runs on `http://localhost:4000`; the Vite client runs on
+`http://localhost:5173` and proxies `/api` plus `/socket.io` to the server.
+
+To run the idempotent seed/upsert process:
+
 ```bash
 npm run seed
 ```
 
-## How pricing works
-1. **Live from zero** — every model launches at **$0** and only gains value as people vote.
-   No pre-seeded prices, no simulation, no fabricated volatility.
-2. **Price = votes × per-vote value** — each vote is worth a `$5` base scaled ×0.5–2.0 by the
-   model's blended API price (`costFactor = clamp(0.5, 2, $/Mtok ÷ 5)`). A vote on a pricey
-   frontier model moves it more than a vote on a cheap one. See `server/src/pricing.js`.
-3. **Event-driven** — voting recomputes the model's price, persists a candle, and broadcasts it
-   over Socket.io instantly. Token-price refreshes (every ~10 min) also re-price and rebroadcast.
-   Trading is disabled until a model has a price.
+The seed command updates the configured roster and starter markets. It is **not** a safe
+"wipe everything and start over" command; the production database lives on persistent storage.
 
-## Layout
+## Tests and builds
+
+```bash
+npm --prefix server test
+npm --prefix client run build
 ```
+
+## Repository layout
+
+```text
 server/src/
-  db.js         schema + migrations
-  seed.js       ~22-model roster + starter prediction markets
-  pricing.js    fundamental index + demand + tick loop
-  auth.js       JWT + bcrypt
-  routes/       auth · models · trade · portfolio · markets · leaderboard
+  config.js       environment and security configuration
+  db.js           SQLite schema and additive migrations
+  seed.js         roster, opening lines, prediction markets, and starter battles
+  pricing.js      vote-priced quotes, candles, and daily reference prices
+  ingest.js       LMArena, OpenRouter, and Hugging Face signal ingestion
+  resolver.js     automatic prediction-market resolution
+  battles.js      Arena generation and settlement
+  routes/         auth, models, trade, portfolio, markets, battles, leaderboard, admin
+
 client/src/
-  pages/        Floor · ModelDetail · Portfolio · Predictions · Leaderboard · Login
-  components/    Nav · TickerTape · MarketStats · FlashNum · FlowBar · Sparkline
-  store/        auth · prices (Socket.io context)
+  pages/          Floor, ModelDetail, Portfolio, Predictions, Arena, Leaderboard, Login
+  components/     navigation, ticker, stats, charts, comments, vote controls
+  store/          auth and Socket.io price state
 ```
+
+## Security notes
+
+Set a strong production `JWT_SECRET`, configure the admin allowlist through environment
+variables, keep Railway/Vercel credentials out of the repository, and rotate any credential
+that has ever been committed. Private repositories are access controls, not secret vaults.
