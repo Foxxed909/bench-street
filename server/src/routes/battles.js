@@ -7,7 +7,7 @@ import { parsePositiveMoney } from '../money.js'
 const router = Router()
 
 const modelStmt = db.prepare(`
-  SELECT m.id, m.slug, m.name, m.ticker, m.color, m.price,
+  SELECT m.id, m.slug, m.name, m.ticker, m.color, m.price, m.status,
          (SELECT elo FROM model_signals WHERE model_id = m.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS elo
     FROM models m WHERE m.id = ?
 `)
@@ -15,17 +15,21 @@ const battleTraderStmt = db.prepare(
   'SELECT COUNT(DISTINCT user_id) AS n FROM battle_bets WHERE battle_id = ?'
 )
 
+function effectiveStatus(battle) {
+  if (battle.status === 'settled') return 'settled'
+  const closesAt = battle.closes_at ? Date.parse(battle.closes_at) : NaN
+  return Number.isFinite(closesAt) && closesAt <= Date.now() ? 'closing' : 'open'
+}
+
 function shape(battle) {
   const a = modelStmt.get(battle.model_a_id)
   const b = modelStmt.get(battle.model_b_id)
   const realPool = battle.pool_a + battle.pool_b
   const total = realPool || 1
-  const isOpen =
-    battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
   return {
     id: battle.id,
     category: battle.category,
-    status: battle.status === 'settled' ? 'settled' : isOpen ? 'open' : 'closing',
+    status: effectiveStatus(battle),
     closesAt: battle.closes_at,
     pool: +realPool.toFixed(2),
     hasBets: realPool > 0,
@@ -65,7 +69,7 @@ router.get('/mine', requireAuth, (req, res) => {
   const rows = db
     .prepare(
       `SELECT bb.id, bb.stake, bb.settled, bb.payout, bb.created_at, bb.side_model_id,
-              b.id AS battle_id, b.status, b.winner_id, b.category,
+              b.id AS battle_id, b.status, b.closes_at, b.winner_id, b.category,
               m.ticker AS side_ticker, m.name AS side_name
          FROM battle_bets bb
          JOIN battles b ON b.id = bb.battle_id
@@ -74,7 +78,11 @@ router.get('/mine', requireAuth, (req, res) => {
         ORDER BY bb.created_at DESC, bb.id DESC`
     )
     .all(req.user.id)
-    .map((r) => ({ ...r, won: r.winner_id != null && r.winner_id === r.side_model_id }))
+    .map((row) => ({
+      ...row,
+      status: effectiveStatus(row),
+      won: row.winner_id != null && row.winner_id === row.side_model_id
+    }))
   res.json({ positions: rows })
 })
 
@@ -92,9 +100,18 @@ router.post('/:id/bet', requireAuth, (req, res) => {
 
   const battle = db.prepare('SELECT * FROM battles WHERE id = ?').get(req.params.id)
   if (!battle) return res.status(404).json({ error: 'battle not found' })
-  const open =
-    battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
-  if (!open) return res.status(400).json({ error: 'battle is closed' })
+  if (effectiveStatus(battle) !== 'open') {
+    return res.status(400).json({ error: 'battle is closed' })
+  }
+
+  // An existing battle can outlive a model lifecycle change. Do not accept new
+  // stakes when either side has since become suspended or unreleased.
+  const a = modelStmt.get(battle.model_a_id)
+  const b = modelStmt.get(battle.model_b_id)
+  const active = (model) => model && (!model.status || model.status === 'active')
+  if (!active(a) || !active(b)) {
+    return res.status(400).json({ error: 'battle is unavailable because a model is not active' })
+  }
 
   const sideModelId = side === 'a' ? battle.model_a_id : battle.model_b_id
   const poolCol = side === 'a' ? 'pool_a' : 'pool_b'
