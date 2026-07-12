@@ -18,21 +18,26 @@ predictions about AI events, and back randomized Elo-weighted matchups in the Ar
 ### Model prices
 
 Bench Street is a **vote-priced index**, not an order book. Buying and selling shares does not
-move a model's quote and there is no counterparty, spread, or slippage.
+move a model's public quote and there is no counterparty, spread, or slippage.
 
 ```text
-price units   = max(0, opening units + likes - dislikes)
-per-vote value = $5 × clamp(0.5, 2.0, blended API $/Mtok ÷ 5)
-share price    = price units × per-vote value
+public price units = max(0, opening units + likes - dislikes)
+per-vote value     = $5 × clamp(0.5, 2.0, blended API $/Mtok ÷ 5)
+public share price = public price units × per-vote value
 ```
 
 - **Opening units** are a curated quality baseline derived from the seeded benchmark score, so
   active models begin with a non-zero ranked opening line.
-- **Community sentiment** moves the line one unit per like/dislike. Each signed-in user has one
-  toggleable stance per model.
+- **Community sentiment** moves the public line one unit per like/dislike. Each signed-in user has
+  one toggleable stance per model.
+- **Self-dealing guard:** an account's own stance is excluded from that account's execution price,
+  portfolio value, and leaderboard rank. A user can still vote and hold a model, but cannot buy,
+  move the quote with that vote, and realize the manufactured move on the same account.
+- This guard closes the single-account loop; it does not solve coordinated or Sybil accounts.
+  Identity verification, reputation weighting, and manipulation monitoring remain future work.
 - **API cost** scales the dollar value of each unit. OpenRouter refreshes can therefore reprice a
   model even when its net vote count is unchanged.
-- ELO, usage, downloads, and benchmark bars are context. They do not directly enter the current
+- Elo, usage, downloads, and benchmark bars are context. They do not directly enter the current
   price formula.
 - Suspended and upcoming models remain visible but cannot be voted on or traded.
 
@@ -95,7 +100,7 @@ to refresh roster data.
 server/src/
   db.js             schema and additive migrations
   seed.js           roster, opening data, markets, and starter battles
-  pricing.js        vote-price recomputation, candles, and daily close
+  pricing.js        public/self-neutralized pricing, candles, and daily close
   ingest.js         external signal refresh and freshness tracking
   resolver.js       automatic prediction resolution
   battles.js        Arena generation and settlement
