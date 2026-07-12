@@ -13,7 +13,12 @@ export function setToken(token) {
 }
 
 async function request(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  const headers = { Accept: 'application/json', ...(opts.headers || {}) }
+  // Setting Content-Type on bodyless public GETs forces a needless CORS preflight
+  // against Railway. Only declare JSON when a request actually carries a body.
+  if (opts.body != null && !headers['Content-Type'] && !headers['content-type']) {
+    headers['Content-Type'] = 'application/json'
+  }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
