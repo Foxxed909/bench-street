@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth } from '../auth.js'
-import { parsePositiveShares } from '../money.js'
+import { calculateTradeTotal, parsePositiveShares } from '../money.js'
 
 const router = Router()
 
@@ -16,7 +16,9 @@ router.post('/', requireAuth, (req, res) => {
   }
   const qty = parsePositiveShares(shares)
   if (qty == null) {
-    return res.status(400).json({ error: 'shares must be a finite amount greater than 0 (up to 6 decimals)' })
+    return res.status(400).json({
+      error: 'shares must be finite, greater than 0, and use at most 6 decimal places'
+    })
   }
 
   const model = db.prepare('SELECT * FROM models WHERE slug = ?').get(slug.trim())
@@ -27,13 +29,12 @@ router.post('/', requireAuth, (req, res) => {
   }
 
   const price = Number(model.price)
-  // A model with no votes has no price yet — block trading until the crowd sets one.
   if (!Number.isFinite(price) || !(price > 0)) {
     return res.status(400).json({ error: 'no valid price yet — this model needs votes first' })
   }
-  const total = Math.round((qty * price + Number.EPSILON) * 100) / 100
-  if (!Number.isFinite(total) || !(total > 0)) {
-    return res.status(400).json({ error: 'trade value is invalid' })
+  const total = calculateTradeTotal(qty, price)
+  if (total == null) {
+    return res.status(400).json({ error: 'trade value must settle to at least $0.01' })
   }
   const userId = req.user.id
 
@@ -45,13 +46,15 @@ router.post('/', requireAuth, (req, res) => {
 
       if (side === 'buy') {
         const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(userId).cash
-        if (cash + 1e-9 < total) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+        if (cash + 1e-9 < total) {
+          throw Object.assign(new Error('insufficient funds'), { status: 400 })
+        }
 
         if (holding) {
           const newShares = Number((holding.shares + qty).toFixed(6))
           const newAvg = (holding.avg_cost * holding.shares + total) / newShares
           if (!Number.isFinite(newShares) || !Number.isFinite(newAvg)) {
-            throw Object.assign(new Error('trade would create an invalid holding'), { code: 400 })
+            throw Object.assign(new Error('trade would create an invalid holding'), { status: 400 })
           }
           db.prepare('UPDATE holdings SET shares = ?, avg_cost = ? WHERE id = ?').run(
             newShares,
@@ -66,7 +69,7 @@ router.post('/', requireAuth, (req, res) => {
         db.prepare('UPDATE users SET cash = ROUND(cash - ?, 2) WHERE id = ?').run(total, userId)
       } else {
         if (!holding || holding.shares < qty - 1e-9) {
-          throw Object.assign(new Error('not enough shares'), { code: 400 })
+          throw Object.assign(new Error('not enough shares'), { status: 400 })
         }
         const remaining = Number((holding.shares - qty).toFixed(6))
         if (remaining <= 1e-6) {
@@ -84,7 +87,9 @@ router.post('/', requireAuth, (req, res) => {
     })
     tx()
   } catch (e) {
-    return res.status(e.code || 400).json({ error: e.message || 'trade failed' })
+    const status = Number.isInteger(e?.status) ? e.status : 500
+    if (status === 500) console.error('[trade] failed:', e)
+    return res.status(status).json({ error: status === 500 ? 'trade failed' : e.message })
   }
 
   const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(userId).cash
