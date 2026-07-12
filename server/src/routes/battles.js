@@ -2,11 +2,12 @@ import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth, requireAdmin } from '../auth.js'
 import { eloWinProb, settleBattle } from '../battles.js'
+import { parsePositiveMoney } from '../validation.js'
 
 const router = Router()
 
 const modelStmt = db.prepare(`
-  SELECT m.id, m.slug, m.name, m.ticker, m.color, m.price,
+  SELECT m.id, m.slug, m.name, m.ticker, m.color, m.price, m.status,
          (SELECT elo FROM model_signals WHERE model_id = m.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS elo
     FROM models m WHERE m.id = ?
 `)
@@ -78,8 +79,12 @@ router.get('/mine', requireAuth, (req, res) => {
 
 router.post('/:id/bet', requireAuth, (req, res) => {
   const { side, stake } = req.body || {}
-  const amount = Number(stake)
-  if (!(amount > 0)) return res.status(400).json({ error: 'stake must be > 0' })
+  const amount = parsePositiveMoney(stake)
+  if (amount == null) {
+    return res.status(400).json({
+      error: 'stake must be at least $0.01 with at most 2 decimal places'
+    })
+  }
   if (side !== 'a' && side !== 'b') return res.status(400).json({ error: "side must be 'a' or 'b'" })
 
   const battle = db.prepare('SELECT * FROM battles WHERE id = ?').get(req.params.id)
@@ -87,13 +92,21 @@ router.post('/:id/bet', requireAuth, (req, res) => {
   const open = battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
   if (!open) return res.status(400).json({ error: 'battle is closed' })
 
+  // Existing open battles can outlive a model lifecycle change. Do not accept new
+  // money when either side is suspended or unreleased.
+  const a = modelStmt.get(battle.model_a_id)
+  const b = modelStmt.get(battle.model_b_id)
+  if (!a || !b || (a.status && a.status !== 'active') || (b.status && b.status !== 'active')) {
+    return res.status(400).json({ error: 'battle is unavailable because a model is not active' })
+  }
+
   const sideModelId = side === 'a' ? battle.model_a_id : battle.model_b_id
   const poolCol = side === 'a' ? 'pool_a' : 'pool_b'
 
   try {
     db.transaction(() => {
       const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-      if (cash < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+      if (cash < amount) throw Object.assign(new Error('insufficient funds'), { status: 400 })
       db.prepare('UPDATE users SET cash = cash - ? WHERE id = ?').run(amount, req.user.id)
       db.prepare(`UPDATE battles SET ${poolCol} = ${poolCol} + ? WHERE id = ?`).run(amount, battle.id)
       db.prepare(
@@ -102,7 +115,8 @@ router.post('/:id/bet', requireAuth, (req, res) => {
       ).run(req.user.id, battle.id, sideModelId, amount, new Date().toISOString())
     })()
   } catch (e) {
-    return res.status(e.code || 400).json({ error: e.message || 'bet failed' })
+    const status = Number.isInteger(e?.status) ? e.status : 500
+    return res.status(status).json({ error: status === 500 ? 'bet failed' : e.message })
   }
 
   const fresh = db.prepare('SELECT * FROM battles WHERE id = ?').get(battle.id)
