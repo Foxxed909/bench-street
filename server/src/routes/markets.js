@@ -2,6 +2,7 @@ import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth, requireAdmin } from '../auth.js'
 import { resolveMarket } from '../resolve.js'
+import { parsePositiveMoney } from '../validation.js'
 
 const router = Router()
 
@@ -78,8 +79,12 @@ router.get('/mine', requireAuth, (req, res) => {
 
 router.post('/:slug/bet', requireAuth, (req, res) => {
   const { outcomeId, stake } = req.body || {}
-  const amount = Number(stake)
-  if (!(amount > 0)) return res.status(400).json({ error: 'stake must be > 0' })
+  const amount = parsePositiveMoney(stake)
+  if (amount == null) {
+    return res.status(400).json({
+      error: 'stake must be at least $0.01 with at most 2 decimal places'
+    })
+  }
 
   const market = db.prepare('SELECT * FROM markets WHERE slug = ?').get(req.params.slug)
   if (!market) return res.status(404).json({ error: 'market not found' })
@@ -95,7 +100,7 @@ router.post('/:slug/bet', requireAuth, (req, res) => {
   try {
     db.transaction(() => {
       const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-      if (cash < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+      if (cash < amount) throw Object.assign(new Error('insufficient funds'), { status: 400 })
       db.prepare('UPDATE users SET cash = cash - ? WHERE id = ?').run(amount, req.user.id)
       db.prepare('UPDATE market_outcomes SET pool = pool + ? WHERE id = ?').run(amount, outcome.id)
       db.prepare(
@@ -104,7 +109,8 @@ router.post('/:slug/bet', requireAuth, (req, res) => {
       ).run(req.user.id, market.id, outcome.id, amount, new Date().toISOString())
     })()
   } catch (e) {
-    return res.status(e.code || 400).json({ error: e.message || 'bet failed' })
+    const status = Number.isInteger(e?.status) ? e.status : 500
+    return res.status(status).json({ error: status === 500 ? 'bet failed' : e.message })
   }
 
   const fresh = db.prepare('SELECT * FROM markets WHERE id = ?').get(market.id)
