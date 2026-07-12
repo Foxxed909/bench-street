@@ -27,11 +27,42 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535.')
 }
 
-// CLIENT_ORIGIN: comma-separated allowlist, or '*' to reflect any origin (handy for a
-// play-money demo — auth is a Bearer token, not cookies). Defaults to '*' in production.
-const RAW_ORIGIN =
-  process.env.CLIENT_ORIGIN || (process.env.NODE_ENV === 'production' ? '*' : 'http://localhost:5173')
-const ORIGIN = RAW_ORIGIN === '*' ? true : RAW_ORIGIN.split(',').map((s) => s.trim())
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+const configuredOrigin = process.env.CLIENT_ORIGIN?.trim()
+if (IS_PRODUCTION && (!configuredOrigin || configuredOrigin === '*')) {
+  throw new Error(
+    'CLIENT_ORIGIN must be an explicit comma-separated HTTPS origin allowlist in production.'
+  )
+}
+
+// A wildcard remains available only when explicitly requested outside production.
+// Production must match the Vercel origins documented in DEPLOY.md instead of quietly
+// allowing every website on the internet to call authenticated API routes.
+const RAW_ORIGIN = configuredOrigin || 'http://localhost:5173'
+const ORIGIN =
+  RAW_ORIGIN === '*'
+    ? true
+    : RAW_ORIGIN.split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+
+if (ORIGIN !== true) {
+  if (ORIGIN.length === 0) throw new Error('CLIENT_ORIGIN must include at least one origin.')
+  for (const origin of ORIGIN) {
+    let parsed
+    try {
+      parsed = new URL(origin)
+    } catch {
+      throw new Error(`CLIENT_ORIGIN contains an invalid URL: ${origin}`)
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin) {
+      throw new Error(`CLIENT_ORIGIN must contain origins only (no paths): ${origin}`)
+    }
+    if (IS_PRODUCTION && parsed.protocol !== 'https:') {
+      throw new Error(`CLIENT_ORIGIN must use HTTPS in production: ${origin}`)
+    }
+  }
+}
 
 // seedDatabase() intentionally upserts the roster on every boot, but it also resets
 // prev_close to the freshly recomputed price. Preserve the existing UTC-day reference
