@@ -8,7 +8,8 @@ const router = Router()
 
 function effectiveStatus(market) {
   if (market.status === 'resolved') return 'resolved'
-  if (market.closes_at && new Date(market.closes_at) <= new Date()) return 'closed'
+  const closesAt = market.closes_at ? Date.parse(market.closes_at) : NaN
+  if (Number.isFinite(closesAt) && closesAt <= Date.now()) return 'closed'
   return 'open'
 }
 
@@ -61,7 +62,7 @@ router.get('/mine', requireAuth, (req, res) => {
   const positions = db
     .prepare(
       `SELECT p.id, p.stake, p.settled, p.payout, p.created_at, p.outcome_id,
-              mk.slug, mk.question, mk.status, mk.resolved_outcome_id,
+              mk.slug, mk.question, mk.status, mk.closes_at, mk.resolved_outcome_id,
               o.label AS outcome
          FROM market_positions p
          JOIN markets mk ON mk.id = p.market_id
@@ -72,6 +73,7 @@ router.get('/mine', requireAuth, (req, res) => {
     .all(req.user.id)
     .map((p) => ({
       ...p,
+      status: effectiveStatus(p),
       won: p.resolved_outcome_id != null && p.outcome_id === p.resolved_outcome_id
     }))
   res.json({ positions })
@@ -137,7 +139,13 @@ router.post('/:slug/resolve', requireAdmin, (req, res) => {
   const fresh = db.prepare('SELECT * FROM markets WHERE id = ?').get(market.id)
   const shaped = withOdds(fresh)
   req.app.get('io')?.emit('market:resolved', { slug: market.slug, winner: result.winner })
-  res.json({ ok: true, market: shaped, winner: result.winner, paidOut: result.paidOut })
+  res.json({
+    ok: true,
+    market: shaped,
+    winner: result.winner,
+    paidOut: result.paidOut,
+    refunded: result.refunded
+  })
 })
 
 export default router
