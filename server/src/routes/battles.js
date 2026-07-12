@@ -20,7 +20,8 @@ function shape(battle) {
   const b = modelStmt.get(battle.model_b_id)
   const realPool = battle.pool_a + battle.pool_b
   const total = realPool || 1
-  const isOpen = battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
+  const isOpen =
+    battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
   return {
     id: battle.id,
     category: battle.category,
@@ -81,13 +82,18 @@ router.post('/:id/bet', requireAuth, (req, res) => {
   const { side, stake } = req.body || {}
   const amount = parsePositiveMoney(stake)
   if (amount == null) {
-    return res.status(400).json({ error: 'stake must be a finite amount of at least $0.01' })
+    return res.status(400).json({
+      error: 'stake must be finite, at least $0.01, and use at most 2 decimal places'
+    })
   }
-  if (side !== 'a' && side !== 'b') return res.status(400).json({ error: "side must be 'a' or 'b'" })
+  if (side !== 'a' && side !== 'b') {
+    return res.status(400).json({ error: "side must be 'a' or 'b'" })
+  }
 
   const battle = db.prepare('SELECT * FROM battles WHERE id = ?').get(req.params.id)
   if (!battle) return res.status(404).json({ error: 'battle not found' })
-  const open = battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
+  const open =
+    battle.status === 'open' && (!battle.closes_at || new Date(battle.closes_at) > new Date())
   if (!open) return res.status(400).json({ error: 'battle is closed' })
 
   const sideModelId = side === 'a' ? battle.model_a_id : battle.model_b_id
@@ -96,7 +102,9 @@ router.post('/:id/bet', requireAuth, (req, res) => {
   try {
     db.transaction(() => {
       const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-      if (cash + 1e-9 < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+      if (cash + 1e-9 < amount) {
+        throw Object.assign(new Error('insufficient funds'), { status: 400 })
+      }
       db.prepare('UPDATE users SET cash = ROUND(cash - ?, 2) WHERE id = ?').run(amount, req.user.id)
       db.prepare(`UPDATE battles SET ${poolCol} = ROUND(${poolCol} + ?, 2) WHERE id = ?`).run(
         amount,
@@ -107,8 +115,10 @@ router.post('/:id/bet', requireAuth, (req, res) => {
          VALUES (?, ?, ?, ?, ?)`
       ).run(req.user.id, battle.id, sideModelId, amount, new Date().toISOString())
     })()
-  } catch (e) {
-    return res.status(e.code || 400).json({ error: e.message || 'bet failed' })
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : 500
+    if (status === 500) console.error('[battle bet] failed:', error)
+    return res.status(status).json({ error: status === 500 ? 'bet failed' : error.message })
   }
 
   const fresh = db.prepare('SELECT * FROM battles WHERE id = ?').get(battle.id)
