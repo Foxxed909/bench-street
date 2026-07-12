@@ -74,23 +74,35 @@ export function allocateParimutuelPayouts(totalPool, winningPool, positions = []
       stakeCents: storedCents(position.stake)
     }))
     .filter((position) => position.stakeCents > 0)
-  const actualWinningStake = weighted.reduce((sum, position) => sum + position.stakeCents, 0)
-  if (!actualWinningStake) return payouts
-
-  const targetCents = Math.max(
-    0,
-    Math.min(totalCents, Math.round((totalCents * actualWinningStake) / winningPoolCents))
+  const actualWinningStake = weighted.reduce(
+    (sum, position) => sum + BigInt(position.stakeCents),
+    0n
   )
+  if (actualWinningStake === 0n) return payouts
+
+  const total = BigInt(totalCents)
+  const winningPoolValue = BigInt(winningPoolCents)
+  const targetNumerator = total * actualWinningStake
+  // Positive integer round-half-up without crossing through imprecise IEEE-754 math.
+  const roundedTarget = (targetNumerator + winningPoolValue / 2n) / winningPoolValue
+  const targetCents = roundedTarget > total ? total : roundedTarget
+
   const rows = weighted.map((position) => {
-    const raw = (targetCents * position.stakeCents) / actualWinningStake
-    const floor = Math.floor(raw)
-    return { ...position, cents: floor, remainder: raw - floor }
+    const rawNumerator = targetCents * BigInt(position.stakeCents)
+    return {
+      ...position,
+      cents: rawNumerator / actualWinningStake,
+      remainder: rawNumerator % actualWinningStake
+    }
   })
 
-  let pennies = targetCents - rows.reduce((sum, row) => sum + row.cents, 0)
-  rows.sort((a, b) => b.remainder - a.remainder || a.index - b.index)
-  for (let i = 0; i < pennies; i++) rows[i].cents += 1
+  let pennies = targetCents - rows.reduce((sum, row) => sum + row.cents, 0n)
+  rows.sort((a, b) => {
+    if (a.remainder === b.remainder) return a.index - b.index
+    return a.remainder > b.remainder ? -1 : 1
+  })
+  for (let i = 0; pennies > 0n; i++, pennies -= 1n) rows[i].cents += 1n
 
-  for (const row of rows) payouts.set(row.id, row.cents / MONEY_SCALE)
+  for (const row of rows) payouts.set(row.id, Number(row.cents) / MONEY_SCALE)
   return payouts
 }
