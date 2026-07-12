@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api.js'
+import { executionPriceFor } from '../lib/pricing.js'
 import { usePrices } from '../store/prices.jsx'
 import FlashNum from '../components/FlashNum.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
@@ -10,7 +11,7 @@ export default function Portfolio() {
   const [data, setData] = useState(null)
   const [trades, setTrades] = useState([])
   const [err, setErr] = useState('')
-  const { prices } = usePrices()
+  const { prices, likes, dislikes } = usePrices()
 
   function load() {
     setErr('')
@@ -19,15 +20,33 @@ export default function Portfolio() {
   }
   useEffect(load, [])
 
-  // Recompute model holdings value/P&L live from socket prices. Cash and locked
-  // stakes come from the server; an open bet remains part of net worth until settled.
+  // Recompute holdings live from socket tallies. The user's own stance is removed
+  // from their valuation exactly as it is at execution, so voting cannot inflate P&L.
   const view = useMemo(() => {
     if (!data) return null
     const positions = data.positions.map((p) => {
-      const price = prices[p.modelId] ?? p.price
+      const liveLikes = likes[p.modelId] ?? p.likes
+      const liveDislikes = dislikes[p.modelId] ?? p.dislikes
+      const price = executionPriceFor({
+        baseVotes: p.baseVotes,
+        likes: liveLikes,
+        dislikes: liveDislikes,
+        myVote: p.myVote,
+        perVoteValue: p.perVoteValue
+      })
+      const publicPrice = prices[p.modelId] ?? p.publicPrice
       const value = p.shares * price
       const cost = p.shares * p.avgCost
-      return { ...p, price, value, pnl: value - cost, pnlPct: cost ? ((value - cost) / cost) * 100 : 0 }
+      return {
+        ...p,
+        likes: liveLikes,
+        dislikes: liveDislikes,
+        publicPrice,
+        price,
+        value,
+        pnl: value - cost,
+        pnlPct: cost ? ((value - cost) / cost) * 100 : 0
+      }
     })
     const holdingsValue = positions.reduce((a, p) => a + p.value, 0)
     const lockedStake = data.lockedStake || 0
@@ -38,7 +57,7 @@ export default function Portfolio() {
       lockedStake,
       netWorth: data.cash + holdingsValue + lockedStake
     }
-  }, [data, prices])
+  }, [data, prices, likes, dislikes])
 
   if (err && !view) return <p className="text-down">{err}</p>
   if (!view) return <p className="text-slate-500">Loading…</p>
@@ -47,7 +66,12 @@ export default function Portfolio() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold tracking-tightest text-white">Portfolio</h1>
+      <div>
+        <h1 className="font-display text-3xl font-bold tracking-tightest text-white">Portfolio</h1>
+        <p className="mt-1 text-xs text-slate-500">
+          Your own vote is excluded from your holding value and leaderboard rank.
+        </p>
+      </div>
       {err && <p className="text-sm text-down">{err}</p>}
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
@@ -71,13 +95,13 @@ export default function Portfolio() {
             and buy something.
           </p>
         ) : (
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <thead>
               <tr className="text-left text-slate-500 border-b border-edge">
                 <th className="py-2 px-4 font-medium">Model</th>
                 <th className="px-4 font-medium text-right">Shares</th>
                 <th className="px-4 font-medium text-right">Avg cost</th>
-                <th className="px-4 font-medium text-right">Price</th>
+                <th className="px-4 font-medium text-right">Your quote</th>
                 <th className="px-4 font-medium text-right">Value</th>
                 <th className="px-4 font-medium text-right">P&amp;L</th>
               </tr>
@@ -90,11 +114,19 @@ export default function Portfolio() {
                       <span className="font-mono text-xs text-slate-400">{p.ticker}</span>
                       <span className="block text-white">{p.name}</span>
                     </Link>
+                    {p.selfVoteExcluded && (
+                      <span className="text-[10px] text-accent/80">own vote neutralized</span>
+                    )}
                   </td>
                   <td className="px-4 text-right font-mono">{p.shares}</td>
                   <td className="px-4 text-right font-mono text-slate-400">{money(p.avgCost)}</td>
                   <td className="px-4 text-right">
                     <FlashNum value={p.price} className="font-mono text-white" />
+                    {p.selfVoteExcluded && p.publicPrice !== p.price && (
+                      <div className="text-[10px] font-mono text-slate-600">
+                        public {money(p.publicPrice)}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 text-right">
                     <FlashNum value={p.value} className="font-mono text-white" />
