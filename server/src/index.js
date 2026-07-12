@@ -23,13 +23,29 @@ import leaderboardRoutes from './routes/leaderboard.js'
 import adminRoutes from './routes/admin.js'
 
 const PORT = Number(process.env.PORT || 4000)
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error('PORT must be an integer between 1 and 65535.')
+}
+
 // CLIENT_ORIGIN: comma-separated allowlist, or '*' to reflect any origin (handy for a
 // play-money demo — auth is a Bearer token, not cookies). Defaults to '*' in production.
 const RAW_ORIGIN =
   process.env.CLIENT_ORIGIN || (process.env.NODE_ENV === 'production' ? '*' : 'http://localhost:5173')
 const ORIGIN = RAW_ORIGIN === '*' ? true : RAW_ORIGIN.split(',').map((s) => s.trim())
 
+// seedDatabase() intentionally upserts the roster on every boot, but it also resets
+// prev_close to the freshly recomputed price. Preserve the existing UTC-day reference
+// across deploys/restarts; newly introduced models still keep their seeded baseline.
+const previousCloses = new Map(
+  db.prepare('SELECT id, prev_close FROM models').all().map((m) => [m.id, m.prev_close])
+)
 const seedResult = seedDatabase()
+if (previousCloses.size > 0) {
+  const restoreClose = db.prepare('UPDATE models SET prev_close = ? WHERE id = ?')
+  db.transaction(() => {
+    for (const [id, prevClose] of previousCloses) restoreClose.run(prevClose, id)
+  })()
+}
 console.log('[seed]', seedResult)
 console.log('[admins]', reconcileAdminFlags())
 
