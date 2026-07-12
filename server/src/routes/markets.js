@@ -81,7 +81,9 @@ router.post('/:slug/bet', requireAuth, (req, res) => {
   const { outcomeId, stake } = req.body || {}
   const amount = parsePositiveMoney(stake)
   if (amount == null) {
-    return res.status(400).json({ error: 'stake must be a finite amount of at least $0.01' })
+    return res.status(400).json({
+      error: 'stake must be finite, at least $0.01, and use at most 2 decimal places'
+    })
   }
 
   const market = db.prepare('SELECT * FROM markets WHERE slug = ?').get(req.params.slug)
@@ -98,7 +100,9 @@ router.post('/:slug/bet', requireAuth, (req, res) => {
   try {
     db.transaction(() => {
       const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-      if (cash + 1e-9 < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
+      if (cash + 1e-9 < amount) {
+        throw Object.assign(new Error('insufficient funds'), { status: 400 })
+      }
       db.prepare('UPDATE users SET cash = ROUND(cash - ?, 2) WHERE id = ?').run(amount, req.user.id)
       db.prepare('UPDATE market_outcomes SET pool = ROUND(pool + ?, 2) WHERE id = ?').run(
         amount,
@@ -109,8 +113,10 @@ router.post('/:slug/bet', requireAuth, (req, res) => {
          VALUES (?, ?, ?, ?, ?)`
       ).run(req.user.id, market.id, outcome.id, amount, new Date().toISOString())
     })()
-  } catch (e) {
-    return res.status(e.code || 400).json({ error: e.message || 'bet failed' })
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : 500
+    if (status === 500) console.error('[market bet] failed:', error)
+    return res.status(status).json({ error: status === 500 ? 'bet failed' : error.message })
   }
 
   const fresh = db.prepare('SELECT * FROM markets WHERE id = ?').get(market.id)
