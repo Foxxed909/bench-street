@@ -204,11 +204,15 @@ ensureColumn('markets', 'rules', 'rules TEXT')
 // Machine-readable auto-resolution spec (JSON) for feed-settled markets.
 ensureColumn('markets', 'resolver', 'resolver TEXT')
 // Reconcile admin flags against the configured allowlist (see config.js) on every
-// boot: promote any user whose name is on the list, and never anyone else. This is
-// idempotent and the SAME source of truth auth.js uses at signup — they can't drift.
+// boot. Demote names removed from the allowlist, then promote the current entries in
+// one transaction so the persisted role cannot drift from the configured policy.
 {
-  const promote = db.prepare('UPDATE users SET is_admin = 1 WHERE LOWER(username) = ? AND is_admin = 0')
-  for (const name of ADMIN_USERNAMES) promote.run(name)
+  const reconcileAdmins = db.transaction(() => {
+    db.prepare('UPDATE users SET is_admin = 0 WHERE is_admin != 0').run()
+    const promote = db.prepare('UPDATE users SET is_admin = 1 WHERE LOWER(username) = ?')
+    for (const name of ADMIN_USERNAMES) promote.run(name)
+  })
+  reconcileAdmins()
 }
 
 export default db
