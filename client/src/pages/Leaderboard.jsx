@@ -21,7 +21,8 @@ export default function Leaderboard() {
       <div>
         <h1 className="font-display text-3xl font-bold tracking-tightest text-white">Leaderboard</h1>
         <p className="text-sm text-slate-400">
-          Ranked by net worth: cash, model holdings, and stakes still locked in open bets.
+          Ranked by cash, self-neutralized model holdings, and stakes still locked in open bets.
+          Your own vote cannot inflate your rank.
         </p>
       </div>
 
