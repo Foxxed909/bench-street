@@ -33,6 +33,9 @@ jobs:
           npm ci --prefix server
           npm ci --prefix client
 
+      - name: Check server module syntax
+        run: find server/src server/test -name '*.js' -print0 | xargs -0 -n1 node --check
+
       - name: Run server tests
         run: npm test --prefix server
 
