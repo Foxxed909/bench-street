@@ -2,7 +2,9 @@ import db from './db.js'
 
 // Standard Elo expected score: P(A beats B).
 export function eloWinProb(eloA, eloB) {
-  return 1 / (1 + Math.pow(10, (eloB - eloA) / 400))
+  const a = Number.isFinite(Number(eloA)) ? Number(eloA) : 1200
+  const b = Number.isFinite(Number(eloB)) ? Number(eloB) : 1200
+  return 1 / (1 + Math.pow(10, (b - a) / 400))
 }
 
 function currentElo(modelId) {
@@ -33,11 +35,20 @@ export function settleBattle(battleId) {
     const bets = db
       .prepare('SELECT * FROM battle_bets WHERE battle_id = ? AND settled = 0')
       .all(battleId)
+    const winningBets = bets.filter((bet) => bet.side_model_id === winnerId)
+    // Initial battles may contain seeded liquidity. When nobody actually backed the
+    // randomly selected winner, refund users instead of burning every real stake.
+    const refundAll = bets.length > 0 && winningBets.length === 0
+
     for (const bet of bets) {
       let payout = 0
-      if (bet.side_model_id === winnerId && winPool > 0) {
+      if (refundAll) {
+        payout = +Number(bet.stake).toFixed(2)
+      } else if (bet.side_model_id === winnerId && winPool > 0) {
         payout = +((bet.stake / winPool) * total).toFixed(2)
-        db.prepare('UPDATE users SET cash = cash + ? WHERE id = ?').run(payout, bet.user_id)
+      }
+      if (payout > 0) {
+        db.prepare('UPDATE users SET cash = ROUND(cash + ?, 2) WHERE id = ?').run(payout, bet.user_id)
       }
       db.prepare('UPDATE battle_bets SET settled = 1, payout = ? WHERE id = ?').run(payout, bet.id)
     }
@@ -61,10 +72,13 @@ export function ensureOpenBattles({ log = console.log } = {}) {
     .get().n
   if (open >= TARGET_OPEN) return
 
+  // Suspended and upcoming models are deliberately non-tradeable/non-votable, so
+  // they must not appear in a fresh betting market either.
   const models = db
     .prepare(
       `SELECT m.id, (SELECT elo FROM model_signals WHERE model_id=m.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS elo
-         FROM models m`
+         FROM models m
+        WHERE COALESCE(m.status, 'active') = 'active'`
     )
     .all()
   if (models.length < 2) return
