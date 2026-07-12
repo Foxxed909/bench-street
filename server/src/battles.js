@@ -61,10 +61,13 @@ export function ensureOpenBattles({ log = console.log } = {}) {
     .get().n
   if (open >= TARGET_OPEN) return
 
+  // Suspended and upcoming models remain visible on the Floor, but they must not
+  // appear in newly generated battles where users can stake credits on them.
   const models = db
     .prepare(
       `SELECT m.id, (SELECT elo FROM model_signals WHERE model_id=m.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS elo
-         FROM models m`
+         FROM models m
+        WHERE COALESCE(m.status, 'active') = 'active'`
     )
     .all()
   if (models.length < 2) return
