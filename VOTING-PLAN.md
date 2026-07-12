@@ -49,10 +49,11 @@ are what move the price now.
   (column kept dormant). Band hugs the vote-adjusted target.
 - Floor: vote button + "Most voted" sort; ModelDetail: Community-votes card + vote line in
   "Why this price"; MarketStats: "Most voted" highlight. `optionalAuth` powers `votedByMe`.
-- Verified: 15 votes pushed Phi-4 +34% (target = fundamental + 15×$5); toggle on/off works;
-  in-UI click 15→16.
+- Verified: votes changed the price and the toggle worked in the UI.
 
-Resolved open questions: votes are PERMANENT (toggle = current supporter count, no decay).
-Leaderboard still trader-net-worth only (could add most-voted later). `demand` column kept
-dormant, not dropped.
-Admin login: sylvie / secret123. Run `npm run dev` (server :4000, client :5173).
+Resolved open questions: votes are permanent while present (toggle = current supporter count,
+no decay). Leaderboard still trader-net-worth only. `demand` remains dormant.
+
+Admin credentials must be configured and shared out-of-band. Never commit passwords, API keys,
+tokens, or production secrets to this repository. Run `npm run dev` for server `:4000` and
+client `:5173`.
