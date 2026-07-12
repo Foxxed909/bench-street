@@ -218,9 +218,15 @@ router.post('/:slug/comments', requireAuth, (req, res) => {
   res.status(201).json({ comment: commentRow(c, req.user.id) })
 })
 
-// Delete a comment (author or admin).
+// Delete a comment (author or admin). Scope the lookup to the model in the URL so
+// /models/A/comments/123 cannot delete a comment that actually belongs to model B.
 router.delete('/:slug/comments/:id', requireAuth, (req, res) => {
-  const c = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id)
+  const m = db.prepare('SELECT id FROM models WHERE slug = ?').get(req.params.slug)
+  if (!m) return res.status(404).json({ error: 'model not found' })
+
+  const c = db
+    .prepare('SELECT * FROM comments WHERE id = ? AND model_id = ?')
+    .get(req.params.id, m.id)
   if (!c) return res.status(404).json({ error: 'comment not found' })
   if (c.user_id !== req.user.id && !req.user.is_admin) {
     return res.status(403).json({ error: 'not your comment' })
