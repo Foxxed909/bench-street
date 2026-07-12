@@ -12,8 +12,8 @@ describe('parsePositiveMoney', () => {
     expect(parsePositiveMoney(0.01)).toBe(0.01)
   })
 
-  it('rejects non-finite, non-positive, sub-cent, and over-precise values', () => {
-    for (const value of [NaN, Infinity, -1, 0, 0.001, 1.001, 'nope']) {
+  it('rejects non-finite, non-positive, sub-cent, over-precise, and coerced values', () => {
+    for (const value of [NaN, Infinity, -1, 0, 0.001, 1.001, 'nope', '', true, [50], { value: 50 }]) {
       expect(parsePositiveMoney(value)).toBeNull()
     }
   })
@@ -26,8 +26,8 @@ describe('parsePositiveShares', () => {
     expect(parsePositiveShares(0.000001)).toBe(0.000001)
   })
 
-  it('rejects dust, over-precision, and non-finite quantities', () => {
-    for (const value of [0, -1, 0.0000001, 1.0000001, Infinity, 'nope']) {
+  it('rejects dust, over-precision, non-finite, and coerced quantities', () => {
+    for (const value of [0, -1, 0.0000001, 1.0000001, Infinity, 'nope', '', true, [1], { value: 1 }]) {
       expect(parsePositiveShares(value)).toBeNull()
     }
   })
