@@ -15,9 +15,8 @@ export function signToken(user) {
 
 export function createUser({ username, email, password }) {
   const now = new Date().toISOString()
-  // Public signup can never grant admin rights. Admin flags are reconciled from the
-  // deployment allowlist at boot, so claiming an allowlisted username on a fresh DB
-  // is not an account-takeover shortcut.
+  // Public signup can never grant admin rights. Production admin flags are
+  // reconciled from immutable configured user IDs at boot.
   const info = db
     .prepare(
       `INSERT INTO users (username, email, password_hash, cash, is_admin, created_at)
