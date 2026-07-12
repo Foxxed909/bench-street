@@ -4,7 +4,7 @@ import { Lock, CheckCircle2, Clock, ShieldCheck, Zap } from 'lucide-react'
 import { api } from '../lib/api.js'
 import { socket } from '../lib/socket.js'
 import { useAuth } from '../store/auth.jsx'
-import { money, num, until } from '../lib/format.js'
+import { money, num } from '../lib/format.js'
 
 export default function Predictions() {
   const { user, refresh } = useAuth()
@@ -16,14 +16,23 @@ export default function Predictions() {
   function load() {
     api.get('/markets').then((d) => setMarkets(d.markets)).catch((e) => setErr(e.message))
     if (user) api.get('/markets/mine').then((d) => setMine(d.positions)).catch(() => {})
+    else setMine([])
   }
   useEffect(load, [user])
 
-  // Live refresh when the auto-resolver settles a market.
+  // Pool changes are pushed immediately; resolutions also refresh personal positions.
   useEffect(() => {
+    const onUpdated = ({ market } = {}) => {
+      if (!market) return
+      setMarkets((current) => current.map((item) => (item.id === market.id ? market : item)))
+    }
     const onResolved = () => load()
+    socket.on('market:updated', onUpdated)
     socket.on('market:resolved', onResolved)
-    return () => socket.off('market:resolved', onResolved)
+    return () => {
+      socket.off('market:updated', onUpdated)
+      socket.off('market:resolved', onResolved)
+    }
   }, [user])
 
   const cats = useMemo(
@@ -34,7 +43,7 @@ export default function Predictions() {
     const rank = { open: 0, closed: 1, resolved: 2 }
     return markets
       .filter((m) => cat === 'All' || m.category === cat)
-      .sort((a, b) => (rank[a.status] - rank[b.status]) || b.volume - a.volume)
+      .sort((a, b) => rank[a.status] - rank[b.status] || b.volume - a.volume)
   }, [markets, cat])
 
   return (
@@ -103,7 +112,8 @@ function StatusBadge({ status, closesAt }) {
       className="flex items-center gap-1 text-[11px] text-slate-400 font-medium"
       title={`Closes ${new Date(closesAt).toUTCString()}`}
     >
-      <Clock size={12} /> ends {new Date(closesAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+      <Clock size={12} /> ends{' '}
+      {new Date(closesAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
     </span>
   )
 }
@@ -182,7 +192,8 @@ function MarketCard({ market, user, onChange }) {
 
       {market.status === 'resolved' ? (
         <div className="mb-3 rounded-lg border border-up/30 bg-up/10 px-3 py-2 text-sm text-up flex items-center gap-2">
-          <CheckCircle2 size={15} /> Resolved: <span className="font-semibold">{market.winnerLabel}</span>
+          <CheckCircle2 size={15} /> Resolved:{' '}
+          <span className="font-semibold">{market.winnerLabel}</span>
         </div>
       ) : isBinary ? (
         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -231,7 +242,10 @@ function MarketCard({ market, user, onChange }) {
                   </span>
                 </div>
                 <div className="mt-1.5 h-1.5 rounded-full bg-ink overflow-hidden">
-                  <div className="bar h-full bg-gradient-to-r from-accent/60 to-accent" style={{ width: `${o.impliedPct}%` }} />
+                  <div
+                    className="bar h-full bg-gradient-to-r from-accent/60 to-accent"
+                    style={{ width: `${o.impliedPct}%` }}
+                  />
                 </div>
               </button>
             )
@@ -248,7 +262,8 @@ function MarketCard({ market, user, onChange }) {
                   <span className="absolute left-2.5 top-2 text-slate-500 text-sm">$</span>
                   <input
                     type="number"
-                    min="0"
+                    min="0.01"
+                    step="0.01"
                     className="input pl-6 w-28"
                     value={stake}
                     onChange={(e) => setStake(e.target.value)}
@@ -314,9 +329,9 @@ function MarketCard({ market, user, onChange }) {
 
 function MyBets({ positions }) {
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-x-auto">
       <div className="px-4 py-3 border-b border-edge text-sm font-semibold text-white">My bets</div>
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[700px] text-sm">
         <tbody>
           {positions.map((p) => {
             const settled = p.status === 'resolved'
@@ -328,7 +343,9 @@ function MyBets({ positions }) {
                 <td className="px-4 text-right font-mono text-slate-400">{money(p.stake)}</td>
                 <td className="px-4 text-right">
                   {!settled ? (
-                    <span className="text-xs text-slate-500">open</span>
+                    <span className="text-xs text-slate-500">
+                      {p.status === 'closed' ? 'closed' : 'open'}
+                    </span>
                   ) : won ? (
                     <span className="font-mono text-up">won {money(p.payout)}</span>
                   ) : (
