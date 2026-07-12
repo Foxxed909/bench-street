@@ -28,7 +28,9 @@ export function createUser({ username, email, password }) {
 }
 
 export function verifyLogin({ username, password }) {
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username)
+  // Signup uniqueness is case-insensitive, so login must be too. Otherwise a user
+  // can create "James" and then be told "james" does not exist.
+  const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?)').get(username)
   if (!user) return null
   return bcrypt.compareSync(password, user.password_hash) ? user : null
 }
