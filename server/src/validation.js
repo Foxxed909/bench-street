@@ -5,10 +5,17 @@ const MONEY_SCALE = 100
 const SHARE_SCALE = 1_000_000
 const FLOAT_TOLERANCE = 1e-7
 
-// Parse a play-money amount stored to cents. Reject NaN/Infinity, sub-cent values,
-// more than two decimal places, and absurdly large payloads before they reach SQLite.
+function numericInput(value) {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string' && value.trim() !== '') return Number(value)
+  return NaN
+}
+
+// Parse a play-money amount stored to cents. Reject booleans/objects, NaN/Infinity,
+// sub-cent values, more than two decimal places, and absurdly large payloads before
+// they reach SQLite.
 export function parsePositiveMoney(value) {
-  const amount = Number(value)
+  const amount = numericInput(value)
   if (!Number.isFinite(amount) || amount < 0.01 || amount > MAX_MONEY_AMOUNT) return null
 
   const cents = Math.round(amount * MONEY_SCALE)
@@ -20,7 +27,7 @@ export function parsePositiveMoney(value) {
 // Shares may be fractional, but cap them at six decimal places. This preserves the
 // existing fractional-share API while preventing dust values and floating-point junk.
 export function parsePositiveShares(value) {
-  const shares = Number(value)
+  const shares = numericInput(value)
   if (!Number.isFinite(shares) || shares <= 0 || shares > MAX_SHARE_QUANTITY) return null
 
   const units = Math.round(shares * SHARE_SCALE)
