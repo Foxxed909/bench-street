@@ -1,17 +1,27 @@
 // Centralised security-sensitive configuration. Admin identity and JWT handling
 // live here so signup, boot reconciliation, and middleware cannot quietly disagree.
 
-// Admins must be explicitly configured in production. Development keeps the old
-// `sylvie` convenience account, but a public deployment never gets a guessable
-// administrator merely because an environment variable was forgotten.
-//
-// Use ADMIN_USERNAMES as a comma-separated allowlist. ADMIN_USERNAME (singular)
-// remains supported for backwards compatibility. An explicitly empty value means
-// "no admins".
-const rawAdmins =
-  process.env.ADMIN_USERNAMES ??
-  process.env.ADMIN_USERNAME ??
-  (process.env.NODE_ENV === 'production' ? '' : 'sylvie')
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+
+// Production admins are pinned to immutable database user IDs. A public username is
+// not an identity boundary: anyone can register a desired name before its owner and
+// wait for a username allowlist to promote it on the next deploy.
+const rawAdminIds = process.env.ADMIN_USER_IDS ?? ''
+export const ADMIN_USER_IDS = rawAdminIds
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => Number(s))
+
+if (ADMIN_USER_IDS.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+  throw new Error('ADMIN_USER_IDS must be a comma-separated list of positive integer user IDs.')
+}
+
+// Username allowlisting is retained only for local/test convenience and backwards
+// compatibility. It is deliberately ignored in production; use ADMIN_USER_IDS there.
+const rawAdmins = IS_PRODUCTION
+  ? ''
+  : process.env.ADMIN_USERNAMES ?? process.env.ADMIN_USERNAME ?? 'sylvie'
 
 export const ADMIN_USERNAMES = rawAdmins
   .split(',')
@@ -27,7 +37,7 @@ export function isAdminUsername(name) {
 const DEV_SECRET = 'dev-secret-change-me'
 const configuredSecret = process.env.JWT_SECRET?.trim()
 export const JWT_SECRET = configuredSecret || DEV_SECRET
-if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEV_SECRET) {
+if (IS_PRODUCTION && JWT_SECRET === DEV_SECRET) {
   throw new Error(
     'JWT_SECRET must be set to a strong, unique value in production (the dev default is forgeable).'
   )
