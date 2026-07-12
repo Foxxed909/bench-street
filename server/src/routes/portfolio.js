@@ -3,6 +3,7 @@ import db from '../db.js'
 import { requireAuth } from '../auth.js'
 
 const router = Router()
+const cents = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
 
 router.get('/', requireAuth, (req, res) => {
   const holdings = db
@@ -26,19 +27,30 @@ router.get('/', requireAuth, (req, res) => {
       shares: h.shares,
       avgCost: h.avg_cost,
       price: h.price,
-      value: +value.toFixed(2),
-      cost: +cost.toFixed(2),
-      pnl: +(value - cost).toFixed(2),
+      value: cents(value),
+      cost: cents(cost),
+      pnl: cents(value - cost),
       pnlPct: cost ? +(((value - cost) / cost) * 100).toFixed(2) : 0
     }
   })
 
-  const holdingsValue = +positions.reduce((a, p) => a + p.value, 0).toFixed(2)
-  const cash = +req.user.cash.toFixed(2)
+  const locked = db
+    .prepare(
+      `SELECT
+         COALESCE((SELECT SUM(stake) FROM market_positions WHERE user_id = ? AND settled = 0), 0) +
+         COALESCE((SELECT SUM(stake) FROM battle_bets WHERE user_id = ? AND settled = 0), 0)
+         AS total`
+    )
+    .get(req.user.id, req.user.id).total
+
+  const holdingsValue = cents(positions.reduce((a, p) => a + p.value, 0))
+  const lockedStake = cents(locked)
+  const cash = cents(req.user.cash)
   res.json({
     cash,
     holdingsValue,
-    netWorth: +(cash + holdingsValue).toFixed(2),
+    lockedStake,
+    netWorth: cents(cash + holdingsValue + lockedStake),
     positions
   })
 })
