@@ -2,7 +2,6 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { ADMIN_USERNAMES } from './config.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // DATA_DIR lets the deploy point the SQLite file at a persistent volume (Railway
@@ -160,7 +159,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_signals_model ON model_signals(model_id, captured_at);
   CREATE INDEX IF NOT EXISTS idx_candles_model ON price_candles(model_id, t);
   CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_market_outcomes_market ON market_outcomes(market_id);
+  CREATE INDEX IF NOT EXISTS idx_market_positions_user ON market_positions(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_market_positions_market ON market_positions(market_id, settled);
+  CREATE INDEX IF NOT EXISTS idx_markets_status_close ON markets(status, closes_at);
   CREATE INDEX IF NOT EXISTS idx_battlebets_user ON battle_bets(user_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_battlebets_battle ON battle_bets(battle_id, settled);
+  CREATE INDEX IF NOT EXISTS idx_battles_status_close ON battles(status, closes_at);
   CREATE INDEX IF NOT EXISTS idx_votes_model ON votes(model_id);
   CREATE INDEX IF NOT EXISTS idx_comments_model ON comments(model_id, created_at);
 `)
@@ -197,18 +202,12 @@ db.exec('UPDATE models SET like_count = vote_count WHERE like_count = 0 AND vote
 // Live signal-feed mapping (OpenRouter / HuggingFace ids).
 ensureColumn('models', 'openrouter_id', 'openrouter_id TEXT')
 ensureColumn('models', 'hf_id', 'hf_id TEXT')
-// Admin flag for resolving markets / refreshing signals.
+// Admin flag for resolving markets / refreshing signals. Reconciliation is intentionally
+// performed only by admins.js so signup, boot, and standalone database imports cannot drift.
 ensureColumn('users', 'is_admin', 'is_admin INTEGER NOT NULL DEFAULT 0')
 // Polymarket-style resolution criteria text on each market.
 ensureColumn('markets', 'rules', 'rules TEXT')
 // Machine-readable auto-resolution spec (JSON) for feed-settled markets.
 ensureColumn('markets', 'resolver', 'resolver TEXT')
-// Reconcile admin flags against the configured allowlist (see config.js) on every
-// boot: promote any user whose name is on the list, and never anyone else. This is
-// idempotent and the SAME source of truth auth.js uses at signup — they can't drift.
-{
-  const promote = db.prepare('UPDATE users SET is_admin = 1 WHERE LOWER(username) = ? AND is_admin = 0')
-  for (const name of ADMIN_USERNAMES) promote.run(name)
-}
 
 export default db
