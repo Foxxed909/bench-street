@@ -62,9 +62,15 @@ router.post('/', requireAuth, (req, res) => {
             holding.id
           )
         } else {
+          // Cost basis must reflect the cents actually charged. For a fractional trade,
+          // the rounded execution total can differ slightly from quote × quantity.
+          const avgCost = total / qty
+          if (!Number.isFinite(avgCost)) {
+            throw Object.assign(new Error('trade would create an invalid holding'), { status: 400 })
+          }
           db.prepare(
             'INSERT INTO holdings (user_id, model_id, shares, avg_cost) VALUES (?, ?, ?, ?)'
-          ).run(userId, model.id, qty, price)
+          ).run(userId, model.id, qty, avgCost)
         }
         db.prepare('UPDATE users SET cash = ROUND(cash - ?, 2) WHERE id = ?').run(total, userId)
       } else {
@@ -72,7 +78,8 @@ router.post('/', requireAuth, (req, res) => {
           throw Object.assign(new Error('not enough shares'), { status: 400 })
         }
         const remaining = Number((holding.shares - qty).toFixed(6))
-        if (remaining <= 1e-6) {
+        // One millionth of a share is valid, so only delete a genuinely empty holding.
+        if (remaining <= 0) {
           db.prepare('DELETE FROM holdings WHERE id = ?').run(holding.id)
         } else {
           db.prepare('UPDATE holdings SET shares = ? WHERE id = ?').run(remaining, holding.id)
