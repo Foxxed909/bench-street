@@ -32,12 +32,13 @@ NODE_ENV=production
 JWT_SECRET=<long random secret>
 CLIENT_ORIGIN=https://benchstreet.vercel.app,https://client-xi-orcin.vercel.app
 DATA_DIR=/data
-ADMIN_USERNAMES=<comma-separated usernames that should be admins>
+ADMIN_USER_IDS=<comma-separated numeric user IDs that should be admins>
 ```
 
-`ADMIN_USERNAMES` is intentionally mandatory for production administration. Public signup never
-promotes an account. Create the intended account, add its username to the allowlist, then redeploy
-so boot-time reconciliation grants it admin rights and revokes stale admins.
+Production administration is pinned to immutable database user IDs, never public usernames.
+Create/sign in to the intended account, read its `id` from the `/api/auth/me` response, set that
+number in `ADMIN_USER_IDS`, then redeploy. Boot-time reconciliation grants configured IDs admin
+rights and revokes every stale admin. `ADMIN_USERNAMES` remains a development-only convenience.
 
 Mount the Railway volume at `/data`. Without the volume, SQLite users, votes, trades, comments,
 and positions disappear when the container filesystem is replaced.
@@ -82,5 +83,5 @@ The server runs on `http://localhost:4000`; Vite runs on `http://localhost:5173`
 
 Render, Fly.io, or another always-on Node host can run `server/`, but persistent storage is not
 optional. Configure a mounted disk for `DATA_DIR`, a strong `JWT_SECRET`, the exact client origin,
-and an explicit admin allowlist. Free instances that sleep will also make the first API/socket
-connection slow after idle periods.
+and explicit production admin user IDs. Free instances that sleep will also make the first
+API/socket connection slow after idle periods.
