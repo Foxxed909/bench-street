@@ -7,11 +7,16 @@ predictions about AI events, and back randomized Elo-weighted matchups in the Ar
 > Play money only. No deposits, withdrawals, or real-world securities. Prices and payouts
 > are game mechanics, not financial advice.
 
-## Live app
+## Production URLs
 
-- Frontend: https://benchstreet.vercel.app
-- API health: https://bench-street-api-production.up.railway.app/api/health
-- Deployment details: [`DEPLOY.md`](./DEPLOY.md)
+- **Canonical app:** <https://benchstreet.vercel.app>
+- **API:** <https://bench-street-api-production.up.railway.app>
+- **API health:** <https://bench-street-api-production.up.railway.app/api/health>
+- **Repository:** <https://github.com/Foxxed909/bench-street>
+- **Deployment details:** [`DEPLOY.md`](./DEPLOY.md)
+
+Use the canonical app URL in public links and shared model pages. Vercel's generated project domain
+is retained only as a fallback origin and deployment diagnostic.
 
 ## Current mechanics
 
@@ -69,7 +74,7 @@ npm run install:all
 npm run dev
 ```
 
-Open `http://localhost:5173`. The API runs on `http://localhost:4000`; Vite proxies `/api` and
+Open <http://localhost:5173>. The API runs on <http://localhost:4000>; Vite proxies `/api` and
 `/socket.io` during local development. New accounts start with `$100,000` in virtual credits unless
 `STARTING_BALANCE` is configured.
 
