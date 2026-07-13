@@ -1,16 +1,18 @@
 # Deploying Bench Street
 
-## Live deployment
+## Production URLs
 
-- **App (Vercel):** https://benchstreet.vercel.app
-- **Secondary Vercel URL:** https://client-xi-orcin.vercel.app
-- **API (Railway):** https://bench-street-api-production.up.railway.app
+- **Canonical app:** https://benchstreet.vercel.app
+- **Vercel project fallback:** https://client-xi-orcin.vercel.app
+- **Railway API:** https://bench-street-api-production.up.railway.app
 - **Health endpoint:** https://bench-street-api-production.up.railway.app/api/health
-- **Repository:** https://github.com/Foxxed909/bench-street (private)
+- **Repository:** https://github.com/Foxxed909/bench-street
 
-The app alias is pinned through `client/vercel.json`, so production deploys reclaim
-`benchstreet.vercel.app` automatically. Do not pin the alias to a one-off deployment URL;
-Vercel Deployment Protection can leave that URL returning 401 after its production status changes.
+All user-facing links should use `https://benchstreet.vercel.app`. The generated Vercel project
+URL is retained only as a fallback origin and deployment diagnostic. The canonical alias is pinned
+through `client/vercel.json`, so every production frontend deployment reclaims it automatically.
+Do not pin public links to a one-off Vercel deployment URL; Deployment Protection can later leave
+that URL returning 401 after its production status changes.
 
 ## Topology
 
@@ -36,18 +38,22 @@ ADMIN_USER_IDS=<comma-separated numeric user IDs that should be admins>
 ```
 
 Production administration is pinned to immutable database user IDs, never public usernames.
-Create/sign in to the intended account, read its `id` from the `/api/auth/me` response, set that
-number in `ADMIN_USER_IDS`, then redeploy. Boot-time reconciliation grants configured IDs admin
-rights and revokes every stale admin. `ADMIN_USERNAMES` remains a development-only convenience.
+Create or sign in to the intended account, read its `id` from `/api/auth/me`, set that number in
+`ADMIN_USER_IDS`, and redeploy. Boot-time reconciliation grants configured IDs administrator rights
+and revokes stale administrators. `ADMIN_USERNAMES` remains a development-only convenience.
 
 Mount the Railway volume at `/data`. Without the volume, SQLite users, votes, trades, comments,
-and positions disappear when the container filesystem is replaced.
+and positions disappear when the container filesystem is replaced, because apparently persistence
+must still be requested explicitly in the twenty-first century.
 
 ### Vercel frontend
 
 ```text
 VITE_API_URL=https://bench-street-api-production.up.railway.app
 ```
+
+The Vercel production environment must use the Railway API base URL above without a trailing
+`/api`; the client adds `/api` and Socket.io paths itself.
 
 ## Deploy
 
@@ -65,9 +71,22 @@ cd server
 railway up
 ```
 
-Railway may also redeploy automatically when the linked branch changes, depending on project
-settings. After either backend deploy, verify `/api/health` and then load the Floor, sign in, and
-confirm a Socket.io price snapshot arrives.
+Railway and Vercel may also deploy automatically when `main` changes, depending on the linked
+project settings.
+
+## Production verification
+
+```bash
+curl -fsS https://bench-street-api-production.up.railway.app/api/health
+curl -I https://benchstreet.vercel.app
+```
+
+Then load the canonical app, sign in, and verify:
+
+1. The Floor receives its opening Socket.io snapshot.
+2. A trade uses the expected self-neutralized quote.
+3. Prediction and Arena pools update live.
+4. Administrator-only routes reject ordinary users and accept the configured admin account.
 
 ## Local development
 
@@ -82,6 +101,6 @@ The server runs on `http://localhost:4000`; Vite runs on `http://localhost:5173`
 ## Alternative hosts
 
 Render, Fly.io, or another always-on Node host can run `server/`, but persistent storage is not
-optional. Configure a mounted disk for `DATA_DIR`, a strong `JWT_SECRET`, the exact client origin,
-and explicit production admin user IDs. Free instances that sleep will also make the first
-API/socket connection slow after idle periods.
+optional. Configure a mounted disk for `DATA_DIR`, a strong `JWT_SECRET`, the exact frontend origin,
+and explicit production admin user IDs. Replace the Railway API URL in Vercel only after the new
+backend health endpoint and Socket.io connection have been verified.
