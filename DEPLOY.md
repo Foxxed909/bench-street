@@ -1,82 +1,106 @@
 # Deploying Bench Street
 
-## ✅ Live deployment (2026-06-15)
-- **App (Vercel):** https://benchstreet.vercel.app (alias of the `client` project;
-  `client-xi-orcin.vercel.app` still works too)
-- **API (Railway):** https://bench-street-api-production.up.railway.app  (health: `/api/health`)
-- **Repo:** https://github.com/Foxxed909/bench-street (private)
-- **URL alias:** `benchstreet.vercel.app` is pinned via `client/vercel.json` `"alias"`, so every
-  `vercel --prod` re-claims it for the new production deployment. Don't use `vercel alias set`
-  to a raw deployment URL — that one loses production status and starts returning 401
-  (Deployment Protection). The vercel.json alias is the durable way.
-- Frontend built with `VITE_API_URL` → the Railway API; backend `CLIENT_ORIGIN=*`,
-  `NODE_ENV=production`, generated `JWT_SECRET`.
-- Redeploy frontend: `cd client && vercel --prod`. Redeploy backend: `cd server && railway up`
-  (or it redeploys on Railway when you change variables).
-- Notes: the Vercel project is named `client` (from the folder); rename in the dashboard if you
-  want a prettier URL. Railway runs on trial credits — if they run out the API stops; the
-  Render blueprint below is the free fallback.
+## Production URLs
 
----
+- **Canonical app:** https://benchstreet.vercel.app
+- **Vercel project fallback:** https://client-xi-orcin.vercel.app
+- **Railway API:** https://bench-street-api-production.up.railway.app
+- **Health endpoint:** https://bench-street-api-production.up.railway.app/api/health
+- **Repository:** https://github.com/Foxxed909/bench-street
 
+All user-facing links should use `https://benchstreet.vercel.app`. The generated Vercel project
+URL is retained only as a fallback origin and deployment diagnostic. The canonical alias is pinned
+through `client/vercel.json`, so every production frontend deployment reclaims it automatically.
+Do not pin public links to a one-off Vercel deployment URL; Deployment Protection can later leave
+that URL returning 401 after its production status changes.
 
+## Topology
 
-Two pieces, two hosts:
+| Piece | Runtime | Host |
+|---|---|---|
+| `client/` | Static React/Vite build | Vercel |
+| `server/` | Node, Express, Socket.io, SQLite, background jobs | Railway |
 
-| Piece | What it is | Host |
-|-------|-----------|------|
-| **client/** | Static Vite/React build | **Vercel** |
-| **server/** | Node + Express + **Socket.io** + SQLite, with always-on tick loops | **Render** (or Railway / Fly) — NOT Vercel |
+The backend cannot be moved unchanged to Vercel serverless functions. It keeps persistent
+WebSocket connections and runs signal-ingest, candle, Arena-settlement, and market-resolution
+timers. It therefore needs an always-on process.
 
-> Why not all-Vercel? The server needs persistent WebSockets + background `setInterval`
-> loops (price ticks, signal cron, auto-resolvers). Vercel is serverless and freezes
-> functions between requests, which breaks all of that. So the backend needs an always-on host.
+## Required environment variables
 
-The code is already deploy-ready: the client reads `VITE_API_URL` for the backend base
-(empty in dev → Vite proxy), and the server reads `PORT`, `CLIENT_ORIGIN`, `JWT_SECRET`.
+### Railway backend
 
----
-
-## 1. Put this folder in its own GitHub repo
-The repo root should be `Bench-Street/` (with `client/`, `server/`, `render.yaml`).
-```bash
-cd Bench-Street
-git init && git add . && git commit -m "Bench Street"
-gh repo create bench-street --public --source=. --push   # gh CLI, user Foxxed909
-```
-(Railway/Fly can deploy straight from the local folder via their CLI if you'd rather skip GitHub.)
-
-## 2. Deploy the backend (Render)
-- Render → **New → Blueprint** → pick the repo. `render.yaml` configures everything
-  (root `server/`, `npm install`, `npm run start`, health check `/api/health`, a generated
-  `JWT_SECRET`, `CLIENT_ORIGIN=*`).
-- Deploy, then copy the service URL, e.g. `https://bench-street-api.onrender.com`.
-- Sanity check: open `…/api/health` → `{"ok":true}`.
-
-**Railway alternative (no GitHub, stays awake better):**
-```bash
-cd server && railway init && railway up
-railway variables set NODE_ENV=production CLIENT_ORIGIN=* JWT_SECRET=$(openssl rand -hex 24)
+```text
+NODE_ENV=production
+JWT_SECRET=<long random secret>
+CLIENT_ORIGIN=https://benchstreet.vercel.app,https://client-xi-orcin.vercel.app
+DATA_DIR=/data
+ADMIN_USER_IDS=<comma-separated numeric user IDs that should be admins>
 ```
 
-## 3. Deploy the frontend (Vercel)
-- Vercel → **New Project** → same repo → set **Root Directory = `client`**
-  (Vite is auto-detected; `client/vercel.json` adds the SPA rewrite so routes like `/m/gpt-5-2` work).
-- Add env var **`VITE_API_URL`** = your backend URL from step 2.
-- Deploy → you get e.g. `https://bench-street.vercel.app`.
+Production administration is pinned to immutable database user IDs, never public usernames.
+Create or sign in to the intended account, read its `id` from `/api/auth/me`, set that number in
+`ADMIN_USER_IDS`, and redeploy. Boot-time reconciliation grants configured IDs administrator rights
+and revokes stale administrators. `ADMIN_USERNAMES` remains a development-only convenience.
 
-## 4. (optional) Lock down CORS
-Set the backend's `CLIENT_ORIGIN` to your exact Vercel URL and redeploy, instead of `*`.
+Mount the Railway volume at `/data`. Without the volume, SQLite users, votes, trades, comments,
+and positions disappear when the container filesystem is replaced, because apparently persistence
+must still be requested explicitly in the twenty-first century.
 
----
+### Vercel frontend
 
-## Free-tier caveats (be aware)
-- **Render free sleeps** after ~15 min idle; first hit cold-starts (~30–60s) and the process
-  restarts, which **re-seeds the DB** (votes/trades/users reset; models/markets return).
-- **SQLite is ephemeral** on free hosts. For real persistence: a paid instance with a disk
-  mounted at `server/data`, or migrate to a hosted Postgres (Neon/Supabase).
-- For an always-on, persistent deploy, Railway/Fly with a volume (or a small paid Render
-  instance + Disk) is the move.
+```text
+VITE_API_URL=https://bench-street-api-production.up.railway.app
+```
 
-## Local dev is unchanged
-`npm run dev` still works (client :5173, server :4000) — `VITE_API_URL` empty → Vite proxy.
+The Vercel production environment must use the Railway API base URL above without a trailing
+`/api`; the client adds `/api` and Socket.io paths itself.
+
+## Deploy
+
+Frontend:
+
+```bash
+cd client
+vercel --prod
+```
+
+Backend:
+
+```bash
+cd server
+railway up
+```
+
+Railway and Vercel may also deploy automatically when `main` changes, depending on the linked
+project settings.
+
+## Production verification
+
+```bash
+curl -fsS https://bench-street-api-production.up.railway.app/api/health
+curl -I https://benchstreet.vercel.app
+```
+
+Then load the canonical app, sign in, and verify:
+
+1. The Floor receives its opening Socket.io snapshot.
+2. A trade uses the expected self-neutralized quote.
+3. Prediction and Arena pools update live.
+4. Administrator-only routes reject ordinary users and accept the configured admin account.
+
+## Local development
+
+```bash
+npm run install:all
+npm run dev
+```
+
+The server runs on `http://localhost:4000`; Vite runs on `http://localhost:5173` and proxies
+`/api` plus `/socket.io` to the server. Leave `VITE_API_URL` empty locally.
+
+## Alternative hosts
+
+Render, Fly.io, or another always-on Node host can run `server/`, but persistent storage is not
+optional. Configure a mounted disk for `DATA_DIR`, a strong `JWT_SECRET`, the exact frontend origin,
+and explicit production admin user IDs. Replace the Railway API URL in Vercel only after the new
+backend health endpoint and Socket.io connection have been verified.

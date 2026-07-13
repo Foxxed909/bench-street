@@ -26,3 +26,15 @@ export function perVoteValue(tokenPrice) {
 export function priceFor(net, tokenPrice) {
   return +(Math.max(0, net || 0) * perVoteValue(tokenPrice)).toFixed(2)
 }
+
+// A user's own stance is excluded from the quote used to execute and value that
+// user's holdings. The public board still reflects every vote, but one account cannot
+// buy, move the quote with its own vote, and sell at the price it manufactured.
+//
+// This closes the single-account self-dealing loop. It does not pretend to solve
+// coordinated/Sybil identities, which needs verification and reputation controls.
+export function executionPriceFor({ baseVotes = 0, likes = 0, dislikes = 0, myVote = 0, tokenPrice }) {
+  const stance = myVote === 1 || myVote === -1 ? myVote : 0
+  const selfNeutralNet = Number(baseVotes || 0) + Number(likes || 0) - Number(dislikes || 0) - stance
+  return priceFor(selfNeutralNet, tokenPrice)
+}

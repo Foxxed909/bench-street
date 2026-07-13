@@ -1,12 +1,18 @@
 import db from './db.js'
-import { VOTE_RATE, costFactor, perVoteValue, priceFor } from './pricing-core.js'
+import {
+  VOTE_RATE,
+  costFactor,
+  executionPriceFor,
+  perVoteValue,
+  priceFor
+} from './pricing-core.js'
 
 // --- Price model -----------------------------------------------------------
-// The pure math (priceFor/perVoteValue/costFactor) lives in pricing-core.js so it
-// can be unit-tested without a DB. This module wires it to storage + sockets:
-// recompute prices from votes, persist candles, and broadcast changes live.
-// No simulation, no random walk — price only changes when a real vote lands.
-export { VOTE_RATE, costFactor, perVoteValue, priceFor }
+// The pure math (priceFor/perVoteValue/costFactor/executionPriceFor) lives in
+// pricing-core.js so it can be unit-tested without a DB. This module wires it to
+// storage + sockets: recompute prices from votes, persist candles, and broadcast
+// changes live. No simulation, no random walk — price only changes when a real vote lands.
+export { VOTE_RATE, costFactor, executionPriceFor, perVoteValue, priceFor }
 
 // Latest token price + current like/dislike tallies for every model.
 function priceInputs() {

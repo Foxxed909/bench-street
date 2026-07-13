@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, AlertTriangle, Clock, Share2, Check } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Clock, Share2, Check, ShieldCheck } from 'lucide-react'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts'
 import { api } from '../lib/api.js'
+import { executionPriceFor } from '../lib/pricing.js'
 import { usePrices } from '../store/prices.jsx'
 import { useAuth } from '../store/auth.jsx'
 import AnimatedNumber from '../components/AnimatedNumber.jsx'
@@ -104,7 +105,7 @@ export default function ModelDetail() {
         type: 'ok',
         text: `${side === 'buy' ? 'Bought' : 'Sold'} ${qty} ${model.ticker} @ ${money(
           r.executed.price
-        )}`
+        )}${r.executed.selfVoteExcluded ? ' · your vote was excluded' : ''}`
       })
     } catch (e) {
       setMsg({ type: 'err', text: e.message })
@@ -121,12 +122,26 @@ export default function ModelDetail() {
   const costMult = voteRate ? perVote / voteRate : 1
   const baseVotes = model.baseVotes || 0
   const totalNet = baseVotes + net
+  const tradePrice = executionPriceFor({
+    baseVotes,
+    likes: liveLikes,
+    dislikes: liveDislikes,
+    myVote: model.myVote,
+    perVoteValue: perVote
+  })
+  const liveApproval =
+    liveLikes + liveDislikes > 0
+      ? Math.round((liveLikes / (liveLikes + liveDislikes)) * 100)
+      : null
   const suspended = model.status === 'suspended'
   const upcoming = model.status === 'upcoming'
   const inactive = suspended || upcoming
-  const canTrade = livePrice > 0 && !inactive
-  const maxShares = user && livePrice ? Math.floor(user.cash / livePrice) : 0
-  const estCost = (Number(shares) || 0) * (livePrice || 0)
+  const canTrade = tradePrice > 0 && !inactive
+  const maxShares =
+    user && tradePrice ? Math.floor((user.cash / tradePrice) * 1_000_000) / 1_000_000 : 0
+  const estCost = (Number(shares) || 0) * (tradePrice || 0)
+  const positionValue = position ? position.shares * tradePrice : 0
+  const positionCost = position ? position.shares * position.avgCost : 0
 
   return (
     <div className="fade-up">
@@ -265,7 +280,7 @@ export default function ModelDetail() {
                         fontSize: 12
                       }}
                       labelFormatter={(t) => new Date(t).toLocaleTimeString()}
-                      formatter={(v) => [money(v), 'Price']}
+                      formatter={(v) => [money(v), 'Public price']}
                     />
                     <Area
                       type="monotone"
@@ -314,7 +329,7 @@ export default function ModelDetail() {
                 sub={`${money(voteRate)} × ${num(costMult, 2)}`}
               />
               <Op>=</Op>
-              <Factor label="Price" value={money(livePrice)} accent />
+              <Factor label="Public price" value={money(livePrice)} accent />
             </div>
 
             {net === 0 && !inactive && (
@@ -368,8 +383,8 @@ export default function ModelDetail() {
             <label className="label">Shares</label>
             <input
               type="number"
-              min="0"
-              step="1"
+              min="0.000001"
+              step="0.000001"
               className="input mt-1 mb-2 font-mono"
               value={shares}
               onChange={(e) => setShares(e.target.value)}
@@ -389,10 +404,26 @@ export default function ModelDetail() {
               </button>
             </div>
 
-            <div className="flex justify-between text-sm mb-3">
-              <span className="text-slate-400">Est. cost</span>
-              <span className="font-mono text-white">{money(estCost)}</span>
+            <div className="space-y-1.5 text-sm mb-3">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Your quote</span>
+                <span className="font-mono text-white">{money(tradePrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Est. cost</span>
+                <span className="font-mono text-white">{money(estCost)}</span>
+              </div>
             </div>
+
+            {model.myVote !== 0 && (
+              <div className="mb-3 flex items-start gap-2 rounded-lg border border-accent/25 bg-accent/5 px-3 py-2 text-xs text-slate-400">
+                <ShieldCheck size={14} className="mt-0.5 shrink-0 text-accent" />
+                <span>
+                  Public quote {money(livePrice)}. Your own {model.myVote === 1 ? 'like' : 'dislike'} is
+                  excluded from your execution price and portfolio value.
+                </span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -417,7 +448,7 @@ export default function ModelDetail() {
                   ? 'This model is suspended and cannot be traded.'
                   : upcoming
                   ? "This model hasn't launched yet — trading opens at release."
-                  : 'No price yet — this model needs votes before it can be traded.'}
+                  : 'No executable price yet — this model needs independent support.'}
               </p>
             )}
 
@@ -439,16 +470,10 @@ export default function ModelDetail() {
                 <span className="text-slate-400">Avg cost</span>
                 <span className="text-right font-mono text-white">{money(position.avgCost)}</span>
                 <span className="text-slate-400">Market value</span>
-                <span className="text-right font-mono text-white">
-                  {money(position.shares * livePrice)}
-                </span>
+                <span className="text-right font-mono text-white">{money(positionValue)}</span>
                 <span className="text-slate-400">Open P&L</span>
-                <span
-                  className={`text-right font-mono ${upDown(
-                    position.shares * livePrice - position.shares * position.avgCost
-                  )}`}
-                >
-                  {money(position.shares * livePrice - position.shares * position.avgCost)}
+                <span className={`text-right font-mono ${upDown(positionValue - positionCost)}`}>
+                  {money(positionValue - positionCost)}
                 </span>
               </div>
             )}
@@ -463,7 +488,7 @@ export default function ModelDetail() {
                   {num(net, 0)}
                 </div>
                 <div className="text-xs text-slate-500">
-                  net · {model.approval != null ? `${model.approval}% approval` : 'no votes yet'}
+                  net · {liveApproval != null ? `${liveApproval}% approval` : 'no votes yet'}
                 </div>
               </div>
               <LikeDislike
@@ -493,8 +518,8 @@ export default function ModelDetail() {
               </div>
             )}
             <p className="text-xs text-slate-500 mt-3">
-              Each net vote moves the price {money(perVote)}. Like to push it up, dislike to pull it
-              down.
+              Each net vote moves the public price {money(perVote)}. Your own stance never improves
+              the quote at which you trade or the value used for your leaderboard rank.
             </p>
           </div>
         </div>

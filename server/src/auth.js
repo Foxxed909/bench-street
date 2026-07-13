@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import db from './db.js'
-import { JWT_SECRET, STARTING_BALANCE, isAdminUsername } from './config.js'
+import { JWT_SECRET, STARTING_BALANCE } from './config.js'
 
 export function hashPassword(pw) {
   return bcrypt.hashSync(pw, 10)
@@ -15,20 +15,23 @@ export function signToken(user) {
 
 export function createUser({ username, email, password }) {
   const now = new Date().toISOString()
-  // Admin is granted ONLY to names on the configured allowlist — never by signup
-  // order, so a stranger registering first on a fresh DB can't seize the panel.
-  const isAdmin = isAdminUsername(username) ? 1 : 0
+  // Public signup can never grant admin rights. Production admin flags are
+  // reconciled from immutable configured user IDs at boot.
   const info = db
     .prepare(
       `INSERT INTO users (username, email, password_hash, cash, is_admin, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, 0, ?)`
     )
-    .run(username, email || null, hashPassword(password), STARTING_BALANCE, isAdmin, now)
+    .run(username, email || null, hashPassword(password), STARTING_BALANCE, now)
   return db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid)
 }
 
 export function verifyLogin({ username, password }) {
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username)
+  const normalized = String(username || '').trim()
+  if (!normalized || typeof password !== 'string') return null
+  // Signup uniqueness is case-insensitive, so login must be too. Otherwise an account
+  // created as "James" exists but mysteriously rejects "james".
+  const user = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(normalized)
   if (!user) return null
   return bcrypt.compareSync(password, user.password_hash) ? user : null
 }

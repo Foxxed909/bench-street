@@ -5,15 +5,29 @@ const TOKEN_KEY = 'bs_token'
 const API_BASE = (import.meta.env.VITE_API_URL || '').trim()
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
 }
 export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token)
-  else localStorage.removeItem(TOKEN_KEY)
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts. The request
+    // will remain unauthenticated instead of crashing the entire React tree.
+  }
 }
 
 async function request(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  const headers = { Accept: 'application/json', ...(opts.headers || {}) }
+  // Bodyless public reads do not need Content-Type. Setting it on every GET creates
+  // a needless CORS preflight against the separately hosted Railway API.
+  if (opts.body != null && !headers['Content-Type'] && !headers['content-type']) {
+    headers['Content-Type'] = 'application/json'
+  }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 

@@ -6,27 +6,37 @@ import { useAuth } from '../store/auth.jsx'
 
 export default function Leaderboard() {
   const [rows, setRows] = useState([])
+  const [err, setErr] = useState('')
   const { user } = useAuth()
 
   useEffect(() => {
-    api.get('/leaderboard').then((d) => setRows(d.leaderboard)).catch(() => {})
+    api
+      .get('/leaderboard')
+      .then((d) => setRows(d.leaderboard || []))
+      .catch((error) => setErr(error.message))
   }, [])
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="font-display text-3xl font-bold tracking-tightest text-white">Leaderboard</h1>
-        <p className="text-sm text-slate-400">Ranked by net worth — cash plus holdings.</p>
+        <p className="text-sm text-slate-400">
+          Ranked by cash, self-neutralized model holdings, and stakes still locked in open bets.
+          Your own vote cannot inflate your rank.
+        </p>
       </div>
 
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
+      {err && <p className="text-sm text-down">{err}</p>}
+
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="text-left text-slate-500 border-b border-edge">
               <th className="py-2.5 px-4 font-medium w-12">#</th>
               <th className="px-4 font-medium">Trader</th>
               <th className="px-4 font-medium text-right">Cash</th>
               <th className="px-4 font-medium text-right">Holdings</th>
+              <th className="px-4 font-medium text-right">Open bets</th>
               <th className="px-4 font-medium text-right">Net worth</th>
             </tr>
           </thead>
@@ -45,10 +55,18 @@ export default function Leaderboard() {
                     <span className="text-slate-500">{i + 1}</span>
                   )}
                 </td>
-                <td className="px-4 text-white">{r.username}</td>
+                <td className="px-4 text-white">
+                  {r.username}
+                  {user && r.username === user.username && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide text-accent">you</span>
+                  )}
+                </td>
                 <td className="px-4 text-right font-mono text-slate-400">{money(r.cash)}</td>
                 <td className="px-4 text-right font-mono text-slate-400">
                   {money(r.holdingsValue)}
+                </td>
+                <td className="px-4 text-right font-mono text-slate-400">
+                  {money(r.lockedStake || 0)}
                 </td>
                 <td className="px-4 text-right font-mono text-white">{money(r.netWorth)}</td>
               </tr>
