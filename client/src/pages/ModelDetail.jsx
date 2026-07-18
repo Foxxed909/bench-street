@@ -497,6 +497,47 @@ export default function ModelDetail() {
               down.
             </p>
           </div>
+
+          <div className="card p-5">
+            <div className="label mb-3">Internet tide</div>
+            {(() => {
+              const s = model.sentiment ?? 0
+              const tiltPct = s * 15
+              const mood =
+                s > 0.15 ? 'bullish' : s < -0.15 ? 'bearish' : s === 0 ? 'quiet' : 'neutral'
+              const color = s > 0.15 ? 'text-up' : s < -0.15 ? 'text-down' : 'text-slate-400'
+              return (
+                <>
+                  <div className="flex items-baseline justify-between">
+                    <div className={`num text-3xl font-bold ${color}`}>
+                      {s > 0 ? '+' : ''}
+                      {s.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {mood} · price tilt {tiltPct >= 0 ? '+' : ''}
+                      {tiltPct.toFixed(1)}%
+                    </div>
+                  </div>
+                  {/* centered gauge: -1 .. 0 .. +1 */}
+                  <div className="relative mt-4 h-2 rounded-full bg-ink/80 border border-edge">
+                    <div className="absolute left-1/2 top-[-3px] h-3.5 w-px bg-slate-600" />
+                    <div
+                      className={`absolute top-0 h-full rounded-full ${s >= 0 ? 'bg-up' : 'bg-down'}`}
+                      style={
+                        s >= 0
+                          ? { left: '50%', width: `${(s / 2) * 100}%` }
+                          : { right: '50%', width: `${(-s / 2) * 100}%` }
+                      }
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-3">
+                    Hourly read of Hacker News + Reddit chatter. The crowd's votes steer the price;
+                    the internet tilts it by at most ±15%.
+                  </p>
+                </>
+              )
+            })()}
+          </div>
         </div>
       </div>
     </div>

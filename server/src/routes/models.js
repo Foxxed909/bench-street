@@ -44,6 +44,7 @@ function decorate(m, myVote = 0) {
     effort: m.effort || null,
     baseVotes: m.base_votes || 0,
     liveSignals: !!(m.openrouter_id || m.hf_id),
+    sentiment: m.sentiment ?? 0,
     change: +change.toFixed(2),
     changePct: +changePct.toFixed(2),
     benchmarks: parseBenchmarks(m.benchmarks),
@@ -61,7 +62,7 @@ const SELECT = `
   SELECT m.id, m.slug, m.name, m.company, m.ticker, m.open_source, m.color,
          m.price, m.prev_close, m.like_count, m.dislike_count, m.benchmarks,
          m.status, m.status_note, m.released_at, m.effort, m.base_votes,
-         m.openrouter_id, m.hf_id,
+         m.openrouter_id, m.hf_id, m.sentiment,
          s.elo, s.usage, s.bench, s.downloads, s.api_price
     FROM models m
     LEFT JOIN model_signals s ON s.id = (

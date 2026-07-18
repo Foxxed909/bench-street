@@ -203,6 +203,18 @@ export default function Floor() {
           <AnimatedNumber value={m.livePrice} duration={450} className="num text-white" />
         </td>
         <td className={`px-4 text-right num ${upDown(m.liveChangePct)}`}>{pct(m.liveChangePct)}</td>
+        <td className="hidden px-4 text-center lg:table-cell">
+          {m.sentiment ? (
+            <span
+              className={`num text-xs ${m.sentiment > 0 ? 'text-up' : 'text-down'}`}
+              title={`Internet tide (HN + Reddit) · price tilt ${(m.sentiment * 15).toFixed(1)}%`}
+            >
+              {m.sentiment > 0 ? '▲' : '▼'} {Math.abs(m.sentiment).toFixed(2)}
+            </span>
+          ) : (
+            <span className="text-xs text-slate-600">—</span>
+          )}
+        </td>
         <td className="hidden px-4 sm:table-cell">
           <div className="flex justify-center">
             <LikeDislike
@@ -359,6 +371,7 @@ export default function Floor() {
               <th className="px-2 font-medium">Model</th>
               <th className="px-4 font-medium text-right">Price</th>
               <th className="px-4 font-medium text-right">24h</th>
+              <th className="px-4 font-medium text-center hidden lg:table-cell">Tide</th>
               <th className="px-4 font-medium text-center hidden sm:table-cell">Sentiment</th>
               <th className="px-4 font-medium text-right hidden md:table-cell">Trend</th>
             </tr>
@@ -368,7 +381,7 @@ export default function Floor() {
               <Fragment key={sec.company ?? '_all'}>
                 {sec.company && (
                   <tr className="bg-white/[0.02]">
-                    <td colSpan={6} className="px-4 py-2">
+                    <td colSpan={7} className="px-4 py-2">
                       <div className="flex items-center gap-2.5">
                         <span className="h-2 w-2 rounded-full" style={{ background: sec.color }} />
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
