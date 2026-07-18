@@ -41,8 +41,15 @@ const UPCOMING_NOTE =
 const VARIANTS = [
   { slug: 'gpt-5-5',          name: 'GPT-5.5',          company: 'OpenAI',    ticker: 'GPT55',  open: 0, color: '#10a37f', elo: 1405, usage: 0, bench: 93, downloads: null, apiPrice: 7.78, vol: 0.011, released: '2026-03-10' },
   { slug: 'gpt-5-5-pro',      name: 'GPT-5.5 Pro',      company: 'OpenAI',    ticker: 'GPT55P', open: 0, color: '#0e8f6f', elo: 1418, usage: 0, bench: 95, downloads: null, apiPrice: 14.0, vol: 0.012, released: '2026-03-10' },
-  { slug: 'gpt-5-6',          name: 'GPT-5.6',          company: 'OpenAI',    ticker: 'GPT56',  open: 0, color: '#10a37f', elo: 1420, usage: 0, bench: 94, downloads: null, apiPrice: 8.0,  vol: 0.012, released: null, status: 'upcoming', statusNote: UPCOMING_NOTE },
-  { slug: 'gpt-5-6-pro',      name: 'GPT-5.6 Pro',      company: 'OpenAI',    ticker: 'GPT56P', open: 0, color: '#0e8f6f', elo: 1432, usage: 0, bench: 96, downloads: null, apiPrice: 16.0, vol: 0.013, released: null, status: 'upcoming', statusNote: UPCOMING_NOTE },
+  // GPT-5.6 shipped 2026-07-09 as a three-tier family (Sol / Terra / Luna).
+  // 'gpt-5-6' / 'gpt-5-6-pro' keep their slugs (they were the pre-release listings)
+  // so existing votes/markets survive; they're now Sol and Sol Pro.
+  { slug: 'gpt-5-6',          name: 'GPT-5.6 Sol',      company: 'OpenAI',    ticker: 'GPT56',  open: 0, color: '#10a37f', elo: 1444, usage: 0, bench: 96, downloads: null, apiPrice: 11.25, vol: 0.012, released: '2026-07-09' },
+  { slug: 'gpt-5-6-pro',      name: 'GPT-5.6 Sol Pro',  company: 'OpenAI',    ticker: 'GPT56P', open: 0, color: '#0e8f6f', elo: 1452, usage: 0, bench: 97, downloads: null, apiPrice: 22.5, vol: 0.013, released: '2026-07-09' },
+  { slug: 'gpt-5-6-terra',    name: 'GPT-5.6 Terra',    company: 'OpenAI',    ticker: 'GPT56T', open: 0, color: '#17b389', elo: 1406, usage: 0, bench: 92, downloads: null, apiPrice: 5.63, vol: 0.011, released: '2026-07-09' },
+  { slug: 'gpt-5-6-luna',     name: 'GPT-5.6 Luna',     company: 'OpenAI',    ticker: 'GPT56L', open: 0, color: '#1fc094', elo: 1368, usage: 0, bench: 87, downloads: null, apiPrice: 2.25, vol: 0.011, released: '2026-07-09' },
+  { slug: 'kimi-k3',          name: 'Kimi K3',          company: 'Moonshot',  ticker: 'KIMI3',  open: 1, color: '#16b8f3', elo: 1428, usage: 0, bench: 94, downloads: 350000, apiPrice: 1.6, vol: 0.014, released: '2026-07-16' },
+  { slug: 'grok-4-5',         name: 'Grok 4.5',         company: 'xAI',       ticker: 'GROK45', open: 0, color: '#5b6470', elo: 1420, usage: 0, bench: 93, downloads: null, apiPrice: 3.0,  vol: 0.013, released: '2026-07-08' },
   { slug: 'grok-4-3',         name: 'Grok 4.3',         company: 'xAI',       ticker: 'GROK43', open: 0, color: '#5b6470', elo: 1398, usage: 0, bench: 91, downloads: null, apiPrice: 6.5,  vol: 0.013, released: '2026-05-01' },
   { slug: 'grok-4-3-heavy',   name: 'Grok 4.3 Heavy',   company: 'xAI',       ticker: 'GRK43HV', open: 0, color: '#7a828d', elo: 1414, usage: 0, bench: 93, downloads: null, apiPrice: 13.0, vol: 0.014, released: '2026-05-01' },
   { slug: 'gemini-3-5-pro',   name: 'Gemini 3.5 Pro',   company: 'Google',    ticker: 'GEM35P', open: 0, color: '#4285f4', elo: 1412, usage: 0, bench: 93, downloads: null, apiPrice: 7.5,  vol: 0.010, released: '2026-04-15' },
@@ -151,6 +158,11 @@ const PROVIDER_IDS = {
   'qwen3-235b':       { or: 'qwen/qwen3.5-122b-a10b',          hf: 'Qwen/Qwen3-235B-A22B' },
   'nova-pro':         { or: 'amazon/nova-pro-v1',              hf: null },
   'command-a':        { or: 'cohere/command-a',                hf: null },
+  'gpt-5-6':          { or: 'openai/gpt-5.6-sol',              hf: null },
+  'gpt-5-6-terra':    { or: 'openai/gpt-5.6-terra',            hf: null },
+  'gpt-5-6-luna':     { or: 'openai/gpt-5.6-luna',             hf: null },
+  'kimi-k3':          { or: 'moonshotai/kimi-k3',              hf: 'moonshotai/Kimi-K3' },
+  'grok-4-5':         { or: 'x-ai/grok-4.5',                   hf: null },
   'phi-4':            { or: 'microsoft/phi-4',                 hf: 'microsoft/phi-4' }
 }
 
