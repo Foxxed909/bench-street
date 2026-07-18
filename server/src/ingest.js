@@ -137,6 +137,15 @@ export async function ingestSignals({ log = console.log, io = null } = {}) {
   if (orData?.data) for (const m of orData.data) orMap[m.id] = m
   if (!orData) log('[ingest] OpenRouter unreachable — keeping prior prices')
 
+  // --- HuggingFace (downloads) — fetched in one parallel batch, not per-model ---
+  const hfModels = models.filter((m) => m.hf_id)
+  const hfResults = await Promise.all(hfModels.map((m) => fetchJson(HF_URL(m.hf_id))))
+  const hfMap = new Map()
+  hfModels.forEach((m, i) => {
+    const hf = hfResults[i]
+    if (hf && typeof hf.downloads === 'number') hfMap.set(m.id, hf.downloads)
+  })
+
   const lastStmt = db.prepare(
     'SELECT * FROM model_signals WHERE model_id = ? ORDER BY captured_at DESC, id DESC LIMIT 1'
   )
@@ -169,13 +178,10 @@ export async function ingestSignals({ log = console.log, io = null } = {}) {
       priced++
     }
 
-    // Downloads from HuggingFace (open models)
-    if (m.hf_id) {
-      const hf = await fetchJson(HF_URL(m.hf_id))
-      if (hf && typeof hf.downloads === 'number') {
-        downloads = hf.downloads
-        downloaded++
-      }
+    // Downloads from HuggingFace (open models) — from the batched fetch above
+    if (hfMap.has(m.id)) {
+      downloads = hfMap.get(m.id)
+      downloaded++
     }
 
     staged.push({ id: m.id, elo, votes, usage: last.usage, bench: last.bench, downloads, apiPrice })
