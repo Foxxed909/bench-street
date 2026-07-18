@@ -9,6 +9,7 @@ import { rateLimit } from './ratelimit.js'
 import { seedDatabase } from './seed.js'
 import { startPricing } from './pricing.js'
 import { startSignalCron } from './ingest.js'
+import { startSentimentCron } from './sentiment.js'
 import { startBattleSettler } from './battles.js'
 import { startAutoResolver } from './resolver.js'
 
@@ -72,6 +73,7 @@ io.on('connection', (socket) => {
 
 startPricing(io)
 startSignalCron({ intervalMin: 10, io })
+startSentimentCron({ intervalMin: 60, io })
 startBattleSettler({ io })
 startAutoResolver({ io })
 

@@ -197,6 +197,8 @@ db.exec('UPDATE models SET like_count = vote_count WHERE like_count = 0 AND vote
 // Live signal-feed mapping (OpenRouter / HuggingFace ids).
 ensureColumn('models', 'openrouter_id', 'openrouter_id TEXT')
 ensureColumn('models', 'hf_id', 'hf_id TEXT')
+// Internet sentiment (-1..1) from Reddit/HN chatter; tilts price up to ±15%.
+ensureColumn('models', 'sentiment', 'sentiment REAL NOT NULL DEFAULT 0')
 // Admin flag for resolving markets / refreshing signals.
 ensureColumn('users', 'is_admin', 'is_admin INTEGER NOT NULL DEFAULT 0')
 // Polymarket-style resolution criteria text on each market.

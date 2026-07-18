@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import db from './db.js'
 import { recomputePrices } from './pricing.js'
 
@@ -124,12 +125,25 @@ function hashJitter(s) {
   return (h % 7) - 3 // -3..+3
 }
 
+// Personal Benchtest scores (0-100), written by `benchtest export --benchstreet`
+// into data/benchtest.json as { "<slug>": score }. Merged as a real benchmark
+// column when present — our own eval, on the board next to the public ones.
+let BENCHTEST = {}
+try {
+  BENCHTEST = JSON.parse(
+    readFileSync(new URL('../data/benchtest.json', import.meta.url), 'utf8')
+  )
+} catch {
+  BENCHTEST = {}
+}
+
 function benchmarksFor(model) {
   const base = model.bench ?? 70
   const out = {}
   for (const b of BENCH_DEFS) {
     out[b.key] = Math.max(20, Math.min(99, Math.round(base + b.off + hashJitter(model.slug + b.key))))
   }
+  if (BENCHTEST[model.slug] != null) out.Benchtest = BENCHTEST[model.slug]
   return JSON.stringify(out)
 }
 

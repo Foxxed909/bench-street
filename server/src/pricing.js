@@ -12,7 +12,7 @@ export { VOTE_RATE, costFactor, perVoteValue, priceFor }
 function priceInputs() {
   return db
     .prepare(
-      `SELECT m.id, m.like_count, m.dislike_count, m.base_votes, s.api_price
+      `SELECT m.id, m.like_count, m.dislike_count, m.base_votes, m.sentiment, s.api_price
          FROM models m
          LEFT JOIN model_signals s ON s.id = (
            SELECT id FROM model_signals
@@ -47,7 +47,7 @@ export function recomputePrices() {
   const apply = db.transaction(() => {
     for (const r of rows) {
       const net = (r.base_votes || 0) + (r.like_count || 0) - (r.dislike_count || 0)
-      const price = priceFor(net, r.api_price)
+      const price = priceFor(net, r.api_price, r.sentiment)
       update.run(price, r.id)
       upCandle.run({ model_id: r.id, t, price })
       result.set(r.id, price)
@@ -62,7 +62,7 @@ export function recomputePrices() {
 export function pushModelPrice(io, modelId) {
   const r = db
     .prepare(
-      `SELECT m.id, m.like_count, m.dislike_count, m.base_votes, s.api_price
+      `SELECT m.id, m.like_count, m.dislike_count, m.base_votes, m.sentiment, s.api_price
          FROM models m
          LEFT JOIN model_signals s ON s.id = (
            SELECT id FROM model_signals WHERE model_id = m.id
@@ -75,7 +75,7 @@ export function pushModelPrice(io, modelId) {
 
   const likes = r.like_count || 0
   const dislikes = r.dislike_count || 0
-  const price = priceFor((r.base_votes || 0) + likes - dislikes, r.api_price)
+  const price = priceFor((r.base_votes || 0) + likes - dislikes, r.api_price, r.sentiment)
   db.prepare('UPDATE models SET price = ? WHERE id = ?').run(price, r.id)
   upCandle.run({ model_id: r.id, t: epochMinute(), price })
   if (io) {

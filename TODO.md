@@ -9,6 +9,35 @@ Stack reviewed: server (Express 4 + better-sqlite3 + Socket.io + JWT), client
 
 ---
 
+## Sentiment pricing + Benchtest — 2026-07-18
+
+**Shipped (this branch):** internet-sentiment pricing. `sentiment.js` searches HN
+(Algolia) + Reddit (public .json) for each active model's name every hour, scores
+titles with a small lexicon, stores −1..1 on `models.sentiment`, and `priceFor`
+tilts price by at most ±15% (`sentimentBoost`, pricing-core.js). Votes stay the
+wheel; the internet is the tide. Live test: 26/39 models scored in ~165s
+(GPT-5.5 Pro +0.30, Grok 4 +0.26). Also shipped: Benchtest scores merged into
+Bench Street benchmarks via `server/data/benchtest.json` (gpt-5-6: 97,
+claude-fable-5: 96), July 2026 roster (Sol/Terra/Luna, Kimi K3, Grok 4.5).
+
+**Sentiment follow-ups:**
+- [ ] **S1. LLM classification instead of lexicon** — lexicon misses sarcasm/context; a cheap free-tier model could label titles pos/neg/neutral.
+- [ ] **S2. More sources** — X needs a paid API; consider lobste.rs, YouTube titles, product review sites. Per-source weighting.
+- [ ] **S3. Show sentiment in the client** — a tide gauge on ModelDetail + Floor column; today it's server-only and invisible.
+- [ ] **S4. Sentiment history** — store per-refresh snapshots so we can chart perception over time (and detect launch-hype decay).
+- [ ] **S5. Name-collision queries** — "Sol"/"Luna" pull crypto noise; quote full names, maybe require a lab keyword in the hit.
+
+**Benchtest discussion agenda (the "benchmarks and stuffs" talk):**
+- [ ] **B1. Suite difficulty saturation** — Sol vs Fable both near-max everything except the villanelle. Need harder tiers: multi-step debugging on real repos, adversarial reasoning, longer creative constraints.
+- [ ] **B2. Answer-key review process** — three wrong keys slipped in (bird 225, father 24, 7^100 mod 5 = 1). Rule: every key verified against a worked reference before a suite ships (suite-check.mjs exists; make it mandatory).
+- [ ] **B3. Physics + Bullshit rerun** — the Sol-vs-Fable background run was killed mid-flight; rerun when ready.
+- [ ] **B4. Chess series** — Sol leads 1–0 (game 1 was a forfeit — Fable's CLI broke during /login, not a real loss). Game 2 abandoned. Play a clean best-of-N; tournament mode is built.
+- [ ] **B5. Judge quality** — 2-judge CLI panel; add position-bias control (swap answer order), a third judge for tiebreaks, and calibration tasks with known scores.
+- [ ] **B6. Objective/judge blend** — 50/50 is arbitrary; consider per-category weights (coding mostly objective, creative mostly judged).
+- [ ] **B7. Auto-feed loop** — `benchtest export --benchstreet` is manual; cron it or hook it post-run so Bench Street stays current.
+
+---
+
 ## External product audit — 2026-06-20 (blind, public-surface only)
 
 An outside agent reviewed the live site without logging in. Useful as a fresh set of
