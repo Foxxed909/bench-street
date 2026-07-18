@@ -35,7 +35,12 @@ export function settleBattle(battleId) {
       .all(battleId)
     for (const bet of bets) {
       let payout = 0
-      if (bet.side_model_id === winnerId && winPool > 0) {
+      if (winPool <= 0) {
+        // Nobody backed the winning side — refund every stake rather than
+        // destroying the pool (the exchange must never burn cash).
+        payout = bet.stake
+        db.prepare('UPDATE users SET cash = cash + ? WHERE id = ?').run(payout, bet.user_id)
+      } else if (bet.side_model_id === winnerId) {
         payout = +((bet.stake / winPool) * total).toFixed(2)
         db.prepare('UPDATE users SET cash = cash + ? WHERE id = ?').run(payout, bet.user_id)
       }

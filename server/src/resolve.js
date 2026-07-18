@@ -22,7 +22,13 @@ export function resolveMarket(marketId, outcomeId) {
       .all(marketId)
     for (const p of positions) {
       let payout = 0
-      if (p.outcome_id === winner.id && winPool > 0) {
+      if (winPool <= 0) {
+        // Nobody backed the winning outcome — refund every stake rather than
+        // destroying the pool (the exchange must never burn cash).
+        payout = p.stake
+        db.prepare('UPDATE users SET cash = cash + ? WHERE id = ?').run(payout, p.user_id)
+        paid += payout
+      } else if (p.outcome_id === winner.id) {
         payout = +((p.stake / winPool) * total).toFixed(2)
         db.prepare('UPDATE users SET cash = cash + ? WHERE id = ?').run(payout, p.user_id)
         paid += payout
