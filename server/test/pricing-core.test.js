@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { VOTE_RATE, costFactor, perVoteValue, priceFor } from '../src/pricing-core.js'
+import {
+  VOTE_RATE,
+  costFactor,
+  executionPriceFor,
+  perVoteValue,
+  priceFor
+} from '../src/pricing-core.js'
 
 describe('costFactor', () => {
   it('is 1.0 at the reference token price ($5/Mtok)', () => {
@@ -49,7 +55,32 @@ describe('priceFor', () => {
     expect(priceFor(undefined, 5)).toBe(0)
   })
   it('rounds to cents', () => {
-    // 7 × (5 × 0.8) = 7 × 4 = 28 ; pick a fractional combo
     expect(priceFor(3, 4)).toBe(12) // 3 × (5 × 0.8 = 4)
+  })
+})
+
+describe('executionPriceFor', () => {
+  const market = { baseVotes: 10, likes: 4, dislikes: 2, tokenPrice: 5 }
+
+  it('matches the public quote when the user has no vote', () => {
+    expect(executionPriceFor({ ...market, myVote: 0 })).toBe(60)
+  })
+
+  it("removes the user's own like from their executable quote", () => {
+    expect(executionPriceFor({ ...market, myVote: 1 })).toBe(55)
+  })
+
+  it("removes the user's own dislike from their executable quote", () => {
+    expect(executionPriceFor({ ...market, myVote: -1 })).toBe(65)
+  })
+
+  it('still respects the zero-price floor after neutralizing a vote', () => {
+    expect(
+      executionPriceFor({ baseVotes: 0, likes: 1, dislikes: 3, myVote: -1, tokenPrice: 5 })
+    ).toBe(0)
+  })
+
+  it('ignores invalid stance values instead of changing the quote', () => {
+    expect(executionPriceFor({ ...market, myVote: 99 })).toBe(60)
   })
 })

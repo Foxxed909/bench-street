@@ -1,5 +1,6 @@
 import db from './db.js'
 import { resolveMarket } from './resolve.js'
+import { hasLiveArenaSignal } from './ingest.js'
 
 // Auto-resolution engine. Markets with resolution='auto' carry a JSON `resolver`
 // spec that is evaluated against LIVE signals. Supported specs:
@@ -16,17 +17,21 @@ import { resolveMarket } from './resolve.js'
 //
 // Threshold markets can settle EARLY (the moment the condition is true). Lead /
 // open_top markets settle at close (when the deadline passes). Anything it can't
-// decide is left for an admin.
+// decide — including ties or stale/non-live Elo — is left for an admin.
 
 function liveElo() {
-  // latest ELO per model
+  // Latest ELO per active model, but only when ingest matched that slug in the most
+  // recent live Arena scrape. Curated seed values are useful display fallbacks; they
+  // are not evidence strong enough to settle a market.
   return db
     .prepare(
       `SELECT m.id, m.slug, m.open_source, m.name,
               (SELECT elo FROM model_signals WHERE model_id=m.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS elo
-         FROM models m`
+         FROM models m
+        WHERE COALESCE(m.status, 'active') = 'active'`
     )
     .all()
+    .filter((m) => hasLiveArenaSignal(m.slug))
 }
 
 function outcomeByLabel(marketId, label) {
@@ -53,7 +58,8 @@ function decide(market) {
     const rows = db
       .prepare(`SELECT name, benchmarks FROM models WHERE slug IN (${ph})`)
       .all(...spec.candidates)
-    let best = null
+    let bestScore = -Infinity
+    let leaders = []
     for (const r of rows) {
       let score = null
       try {
@@ -61,12 +67,19 @@ function decide(market) {
       } catch {
         score = null
       }
-      if (score == null) continue
-      if (!best || score > best.score) best = { name: r.name, score }
+      if (!Number.isFinite(Number(score))) continue
+      score = Number(score)
+      if (score > bestScore) {
+        bestScore = score
+        leaders = [r]
+      } else if (score === bestScore) {
+        leaders.push(r)
+      }
     }
-    if (!best) return null
+    if (leaders.length !== 1) return null
+    const best = leaders[0]
     const o = outcomeByLabel(market.id, best.name)
-    return o ? { outcomeId: o.id, note: `${best.name} led ${spec.key} (${best.score})` } : null
+    return o ? { outcomeId: o.id, note: `${best.name} led ${spec.key} (${bestScore})` } : null
   }
 
   if (spec.kind === 'price_top') {
@@ -75,14 +88,14 @@ function decide(market) {
     const rows = db
       .prepare(`SELECT name, price FROM models WHERE slug IN (${ph})`)
       .all(...spec.candidates)
-    let best = null
-    for (const r of rows) {
-      if (r.price == null) continue
-      if (!best || r.price > best.price) best = { name: r.name, price: r.price }
-    }
-    if (!best || !(best.price > 0)) return null // all $0 → leave for an admin
+      .filter((r) => Number.isFinite(Number(r.price)) && Number(r.price) > 0)
+    if (!rows.length) return null
+    const bestPrice = Math.max(...rows.map((r) => Number(r.price)))
+    const leaders = rows.filter((r) => Number(r.price) === bestPrice)
+    if (leaders.length !== 1) return null
+    const best = leaders[0]
     const o = outcomeByLabel(market.id, best.name)
-    return o ? { outcomeId: o.id, note: `${best.name} most valued ($${best.price.toFixed(0)})` } : null
+    return o ? { outcomeId: o.id, note: `${best.name} most valued ($${bestPrice.toFixed(0)})` } : null
   }
 
   const models = liveElo()
@@ -90,14 +103,14 @@ function decide(market) {
   if (!haveElo) return null
 
   if (spec.kind === 'elo_threshold') {
-    const max = Math.max(...models.map((m) => m.elo || 0))
+    const max = Math.max(...models.filter((m) => m.elo != null).map((m) => Number(m.elo)))
     if (max >= spec.value) {
       const yes = outcomeByLabel(market.id, 'Yes')
-      return yes ? { outcomeId: yes.id, note: `max ELO ${max.toFixed(0)} ≥ ${spec.value}` } : null
+      return yes ? { outcomeId: yes.id, note: `max live ELO ${max.toFixed(0)} ≥ ${spec.value}` } : null
     }
     if (closed) {
       const no = outcomeByLabel(market.id, 'No')
-      return no ? { outcomeId: no.id, note: `max ELO never reached ${spec.value}` } : null
+      return no ? { outcomeId: no.id, note: `live ELO never reached ${spec.value}` } : null
     }
     return null
   }
@@ -106,20 +119,28 @@ function decide(market) {
     if (!closed) return null
     const a = models.find((m) => m.slug === spec.a)
     const b = models.find((m) => m.slug === spec.b)
-    if (!a?.elo || !b?.elo) return null
-    const winnerName = a.elo >= b.elo ? a.name : b.name
+    if (a?.elo == null || b?.elo == null) return null
+    if (Number(a.elo) === Number(b.elo)) return null
+    const winnerName = Number(a.elo) > Number(b.elo) ? a.name : b.name
     const o = outcomeByLabel(market.id, winnerName)
-    return o ? { outcomeId: o.id, note: `${winnerName} led on ELO` } : null
+    return o ? { outcomeId: o.id, note: `${winnerName} led on live ELO` } : null
   }
 
   if (spec.kind === 'open_top') {
     if (!closed) return null
-    const ranked = models.filter((m) => m.elo != null).sort((x, y) => y.elo - x.elo)
+    const ranked = models.filter((m) => m.elo != null).sort((x, y) => Number(y.elo) - Number(x.elo))
     if (!ranked.length) return null
-    const topOpen = ranked[0].open_source
+    const topElo = Number(ranked[0].elo)
+    const leaders = ranked.filter((m) => Number(m.elo) === topElo)
+    const openness = new Set(leaders.map((m) => !!m.open_source))
+    if (openness.size !== 1) return null
+    const topOpen = openness.values().next().value
     const label = topOpen ? 'Yes' : 'No'
     const o = outcomeByLabel(market.id, label)
-    return o ? { outcomeId: o.id, note: `top model ${ranked[0].name} ${topOpen ? 'is' : 'is not'} open` } : null
+    const names = leaders.map((m) => m.name).join(', ')
+    return o
+      ? { outcomeId: o.id, note: `top live model${leaders.length > 1 ? 's' : ''} ${names} ${topOpen ? 'is/are' : 'is/are not'} open` }
+      : null
   }
 
   return null

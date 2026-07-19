@@ -14,7 +14,7 @@ const LMARENA_URL = 'https://lmarena.ai/leaderboard'
 // Roster slug → LMArena matcher. Value is one token or an array of tokens that
 // must ALL appear in the normalized display name. Among matches we take the entry
 // with the most votes (the most-established variant). Unmatched models keep their
-// curated ELO/usage.
+// curated ELO/usage for display, but are NOT eligible for automatic ELO resolution.
 const ARENA = {
   'gpt-5-2': 'gpt5.2',
   'gpt-5-mini': ['gpt5', 'mini'],
@@ -34,7 +34,7 @@ const ARENA = {
   'deepseek-r2': 'deepseek-r1', // R2 is ahead of this timeline's board; track latest R-series
   'qwen3-max': ['qwen', 'max'],
   'qwen3-235b': ['qwen', '235'],
-  'nova-pro': 'nova', // matches Amazon's live Nova arena entry
+  'nova-pro': 'nova',
   'command-a': 'command-a',
   'phi-4': 'phi4'
 }
@@ -42,9 +42,18 @@ const ARENA = {
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '')
 
 let lastRun = null
+let liveArenaSlugs = new Set()
+let ingestPromise = null
+
 export function signalsStatus() {
   const row = db.prepare('SELECT MAX(captured_at) AS at FROM model_signals').get()
-  return { updatedAt: row?.at || null, lastRun }
+  return { updatedAt: row?.at || null, lastRun, liveArenaModels: liveArenaSlugs.size }
+}
+
+// Auto-resolvers must distinguish a genuinely matched live Arena rating from a
+// curated fallback value carried in model_signals.
+export function hasLiveArenaSignal(slug) {
+  return liveArenaSlugs.has(slug)
 }
 
 async function fetchText(url) {
@@ -121,36 +130,37 @@ function blendedPrice(pricing) {
   return blended > 0 ? +blended.toFixed(2) : null
 }
 
-export async function ingestSignals({ log = console.log, io = null } = {}) {
+async function ingestSignalsOnce({ log = console.log, io = null } = {}) {
   const models = db.prepare('SELECT id, slug, openrouter_id, hf_id FROM models').all()
 
-  // --- LMArena (ELO + votes) ---
-  const arenaHtml = await fetchText(LMARENA_URL)
+  // Fetch independent sources concurrently. HuggingFace was previously awaited one
+  // model at a time, making a single refresh take N × network latency.
+  const hfModels = models.filter((m) => m.hf_id)
+  const [arenaHtml, orData, hfRows] = await Promise.all([
+    fetchText(LMARENA_URL),
+    fetchJson(OPENROUTER_URL),
+    Promise.all(
+      hfModels.map(async (m) => ({ modelId: m.id, data: await fetchJson(HF_URL(m.hf_id)) }))
+    )
+  ])
+
   const arena = arenaHtml ? parseArena(arenaHtml) : new Map()
   // attach normalized key for matching
   for (const [key, v] of arena) v.key = key
   if (!arenaHtml) log('[ingest] LMArena unreachable — keeping prior ELO/usage')
+  else if (arena.size === 0) log('[ingest] LMArena markup parsed zero entries — keeping prior ELO/usage')
 
-  // --- OpenRouter (price) ---
-  const orData = await fetchJson(OPENROUTER_URL)
   const orMap = {}
   if (orData?.data) for (const m of orData.data) orMap[m.id] = m
   if (!orData) log('[ingest] OpenRouter unreachable — keeping prior prices')
 
-  // --- HuggingFace (downloads) — fetched in one parallel batch, not per-model ---
-  const hfModels = models.filter((m) => m.hf_id)
-  const hfResults = await Promise.all(hfModels.map((m) => fetchJson(HF_URL(m.hf_id))))
-  const hfMap = new Map()
-  hfModels.forEach((m, i) => {
-    const hf = hfResults[i]
-    if (hf && typeof hf.downloads === 'number') hfMap.set(m.id, hf.downloads)
-  })
-
+  const hfMap = new Map(hfRows.map((row) => [row.modelId, row.data]))
   const lastStmt = db.prepare(
     'SELECT * FROM model_signals WHERE model_id = ? ORDER BY captured_at DESC, id DESC LIMIT 1'
   )
   const now = new Date().toISOString()
   const staged = []
+  const matchedArenaSlugs = new Set()
   let elos = 0
   let priced = 0
   let downloaded = 0
@@ -167,6 +177,7 @@ export async function ingestSignals({ log = console.log, io = null } = {}) {
     if (a) {
       elo = +a.rating.toFixed(2)
       votes = a.votes
+      matchedArenaSlugs.add(m.slug)
       elos++
     }
 
@@ -178,14 +189,19 @@ export async function ingestSignals({ log = console.log, io = null } = {}) {
       priced++
     }
 
-    // Downloads from HuggingFace (open models) — from the batched fetch above
-    if (hfMap.has(m.id)) {
-      downloads = hfMap.get(m.id)
+    // Downloads from HuggingFace (open models)
+    const hf = hfMap.get(m.id)
+    if (hf && typeof hf.downloads === 'number') {
+      downloads = hf.downloads
       downloaded++
     }
 
     staged.push({ id: m.id, elo, votes, usage: last.usage, bench: last.bench, downloads, apiPrice })
   }
+
+  // Only the models matched during THIS scrape are eligible for Elo auto-resolution.
+  // A source failure clears eligibility rather than quietly trusting curated fallbacks.
+  liveArenaSlugs = matchedArenaSlugs
 
   // Usage = share of arena votes among models we matched (kept as a %). Models
   // without a live vote count keep their curated usage figure.
@@ -194,6 +210,17 @@ export async function ingestSignals({ log = console.log, io = null } = {}) {
     for (const r of staged) {
       if (r.votes != null) r.usage = +((r.votes / totalVotes) * 100).toFixed(2)
     }
+  }
+
+  const liveUpdates = elos + priced + downloaded
+  const source = liveUpdates === 0 ? 'cached' : elos > 0 && priced > 0 ? 'live' : 'partial'
+  lastRun = { at: now, elos, priced, downloaded, source }
+
+  // Do not write a brand-new timestamp when every external source failed. Otherwise
+  // the UI says "signals updated just now" while all values are merely cached copies.
+  if (liveUpdates === 0) {
+    log('[ingest] no live values updated; retained previous signal snapshot')
+    return lastRun
   }
 
   const insSignal = db.prepare(`
@@ -209,27 +236,37 @@ export async function ingestSignals({ log = console.log, io = null } = {}) {
   // Token prices feed each vote's value, so refresh prices and broadcast them.
   const prices = recomputePrices()
   if (io && prices.size) {
-    const models = db
+    const current = db
       .prepare('SELECT id, price, like_count AS likes, dislike_count AS dislikes FROM models')
       .all()
-    io.emit('prices', { t: Date.now(), models })
+    io.emit('prices', { t: Date.now(), models: current })
   }
-  lastRun = {
-    at: now,
-    elos,
-    priced,
-    downloaded,
-    source: arenaHtml ? 'live' : orData ? 'partial' : 'cached'
-  }
-  log(`[ingest] ${elos} live ELO · ${priced} live prices · ${downloaded} live downloads (${lastRun.source})`)
+  log(`[ingest] ${elos} live ELO · ${priced} live prices · ${downloaded} live downloads (${source})`)
   return lastRun
 }
 
+// Coalesce a manual refresh with the cron instead of running two expensive, competing
+// network/SQLite refreshes at once.
+export function ingestSignals(options = {}) {
+  if (!ingestPromise) {
+    ingestPromise = ingestSignalsOnce(options).finally(() => {
+      ingestPromise = null
+    })
+  }
+  return ingestPromise
+}
+
 export function startSignalCron({ intervalMin = 10, log = console.log, io = null } = {}) {
-  setTimeout(() => ingestSignals({ log, io }).catch((e) => log('[ingest] error: ' + e.message)), 4000)
+  const kickoff = setTimeout(
+    () => ingestSignals({ log, io }).catch((e) => log('[ingest] error: ' + e.message)),
+    4000
+  )
   const timer = setInterval(
     () => ingestSignals({ log, io }).catch((e) => log('[ingest] error: ' + e.message)),
     intervalMin * 60 * 1000
   )
-  return () => clearInterval(timer)
+  return () => {
+    clearTimeout(kickoff)
+    clearInterval(timer)
+  }
 }

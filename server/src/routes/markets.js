@@ -2,12 +2,14 @@ import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth, requireAdmin } from '../auth.js'
 import { resolveMarket } from '../resolve.js'
+import { parsePositiveMoney } from '../money.js'
 
 const router = Router()
 
 function effectiveStatus(market) {
   if (market.status === 'resolved') return 'resolved'
-  if (market.closes_at && new Date(market.closes_at) <= new Date()) return 'closed'
+  const closesAt = market.closes_at ? Date.parse(market.closes_at) : NaN
+  if (Number.isFinite(closesAt) && closesAt <= Date.now()) return 'closed'
   return 'open'
 }
 
@@ -60,7 +62,7 @@ router.get('/mine', requireAuth, (req, res) => {
   const positions = db
     .prepare(
       `SELECT p.id, p.stake, p.settled, p.payout, p.created_at, p.outcome_id,
-              mk.slug, mk.question, mk.status, mk.resolved_outcome_id,
+              mk.slug, mk.question, mk.status, mk.closes_at, mk.resolved_outcome_id,
               o.label AS outcome
          FROM market_positions p
          JOIN markets mk ON mk.id = p.market_id
@@ -71,6 +73,7 @@ router.get('/mine', requireAuth, (req, res) => {
     .all(req.user.id)
     .map((p) => ({
       ...p,
+      status: effectiveStatus(p),
       won: p.resolved_outcome_id != null && p.outcome_id === p.resolved_outcome_id
     }))
   res.json({ positions })
@@ -78,8 +81,12 @@ router.get('/mine', requireAuth, (req, res) => {
 
 router.post('/:slug/bet', requireAuth, (req, res) => {
   const { outcomeId, stake } = req.body || {}
-  const amount = Number(stake)
-  if (!(amount > 0)) return res.status(400).json({ error: 'stake must be > 0' })
+  const amount = parsePositiveMoney(stake)
+  if (amount == null) {
+    return res.status(400).json({
+      error: 'stake must be finite, at least $0.01, and use at most 2 decimal places'
+    })
+  }
 
   const market = db.prepare('SELECT * FROM markets WHERE slug = ?').get(req.params.slug)
   if (!market) return res.status(404).json({ error: 'market not found' })
@@ -95,33 +102,50 @@ router.post('/:slug/bet', requireAuth, (req, res) => {
   try {
     db.transaction(() => {
       const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-      if (cash < amount) throw Object.assign(new Error('insufficient funds'), { code: 400 })
-      db.prepare('UPDATE users SET cash = cash - ? WHERE id = ?').run(amount, req.user.id)
-      db.prepare('UPDATE market_outcomes SET pool = pool + ? WHERE id = ?').run(amount, outcome.id)
+      if (cash + 1e-9 < amount) {
+        throw Object.assign(new Error('insufficient funds'), { status: 400 })
+      }
+      db.prepare('UPDATE users SET cash = ROUND(cash - ?, 2) WHERE id = ?').run(amount, req.user.id)
+      db.prepare('UPDATE market_outcomes SET pool = ROUND(pool + ?, 2) WHERE id = ?').run(
+        amount,
+        outcome.id
+      )
       db.prepare(
         `INSERT INTO market_positions (user_id, market_id, outcome_id, stake, created_at)
          VALUES (?, ?, ?, ?, ?)`
       ).run(req.user.id, market.id, outcome.id, amount, new Date().toISOString())
     })()
-  } catch (e) {
-    return res.status(e.code || 400).json({ error: e.message || 'bet failed' })
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : 500
+    if (status === 500) console.error('[market bet] failed:', error)
+    return res.status(status).json({ error: status === 500 ? 'bet failed' : error.message })
   }
 
   const fresh = db.prepare('SELECT * FROM markets WHERE id = ?').get(market.id)
+  const shaped = withOdds(fresh)
   const cash = db.prepare('SELECT cash FROM users WHERE id = ?').get(req.user.id).cash
-  res.json({ ok: true, market: withOdds(fresh), cash })
+  req.app.get('io')?.emit('market:updated', { slug: market.slug, market: shaped })
+  res.json({ ok: true, market: shaped, cash })
 })
 
 // Admin: resolve a market to a winning outcome and pay backers pro-rata from the pool.
 router.post('/:slug/resolve', requireAdmin, (req, res) => {
-  const market = db.prepare('SELECT id FROM markets WHERE slug = ?').get(req.params.slug)
+  const market = db.prepare('SELECT id, slug FROM markets WHERE slug = ?').get(req.params.slug)
   if (!market) return res.status(404).json({ error: 'market not found' })
 
   const result = resolveMarket(market.id, (req.body || {}).outcomeId)
   if (!result.ok) return res.status(400).json({ error: result.error })
 
   const fresh = db.prepare('SELECT * FROM markets WHERE id = ?').get(market.id)
-  res.json({ ok: true, market: withOdds(fresh), winner: result.winner, paidOut: result.paidOut })
+  const shaped = withOdds(fresh)
+  req.app.get('io')?.emit('market:resolved', { slug: market.slug, winner: result.winner })
+  res.json({
+    ok: true,
+    market: shaped,
+    winner: result.winner,
+    paidOut: result.paidOut,
+    refunded: result.refunded
+  })
 })
 
 export default router

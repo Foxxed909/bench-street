@@ -15,21 +15,29 @@ export default function Arena() {
   function load() {
     api.get('/battles').then((d) => setBattles(d.battles)).catch(() => {})
     if (user) api.get('/battles/mine').then((d) => setMine(d.positions)).catch(() => {})
+    else setMine([])
   }
   useEffect(load, [user])
 
-  // Live countdowns + pick up auto-settled battles.
+  // Keep countdowns moving, accept instant pool updates, and retain a slow poll as
+  // reconnect insurance for browsers that slept through a Socket.io event.
   useEffect(() => {
     const t = setInterval(() => setNow((n) => n + 1), 1000)
-    const poll = setInterval(load, 8000)
-    const onChange = () => load()
-    socket.on('battle:settled', onChange)
-    socket.on('battle:new', onChange)
+    const poll = setInterval(load, 15000)
+    const onChanged = () => load()
+    const onUpdated = ({ battle } = {}) => {
+      if (!battle) return
+      setBattles((current) => current.map((item) => (item.id === battle.id ? battle : item)))
+    }
+    socket.on('battle:updated', onUpdated)
+    socket.on('battle:settled', onChanged)
+    socket.on('battle:new', onChanged)
     return () => {
       clearInterval(t)
       clearInterval(poll)
-      socket.off('battle:settled', onChange)
-      socket.off('battle:new', onChange)
+      socket.off('battle:updated', onUpdated)
+      socket.off('battle:settled', onChanged)
+      socket.off('battle:new', onChanged)
     }
   }, [user])
 
@@ -49,8 +57,8 @@ export default function Arena() {
           <Swords className="text-accent" size={24} /> Arena
         </h1>
         <p className="text-sm text-slate-400">
-          Head-to-head: back a model to win its matchup. Settled by live Elo win-probability —
-          upsets happen.
+          Head-to-head: back a model to win its matchup. The result is simulated from the latest
+          Elo win probability, so upsets happen.
         </p>
       </div>
 
@@ -189,19 +197,34 @@ function BattleCard({ battle, user, onChange }) {
       </div>
 
       <div className="flex items-stretch gap-2">
-        <Fighter side={a} selected={side === 'a'} onSelect={() => setSide('a')} settled={settled} disabled={!open} hasBets={battle.hasBets} />
+        <Fighter
+          side={a}
+          selected={side === 'a'}
+          onSelect={() => setSide('a')}
+          settled={settled}
+          disabled={!open}
+          hasBets={battle.hasBets}
+        />
         <div className="flex items-center text-slate-600 font-bold text-xs">VS</div>
-        <Fighter side={b} selected={side === 'b'} onSelect={() => setSide('b')} settled={settled} disabled={!open} hasBets={battle.hasBets} />
+        <Fighter
+          side={b}
+          selected={side === 'b'}
+          onSelect={() => setSide('b')}
+          settled={settled}
+          disabled={!open}
+          hasBets={battle.hasBets}
+        />
       </div>
 
       <div className="flex items-center justify-between text-[11px] text-slate-500 mt-3">
         <span className="flex items-center gap-1">
-          <Zap size={11} className="text-accent" /> Elo favorite: {a.eloProb >= b.eloProb ? a.ticker : b.ticker}{' '}
-          {Math.max(a.eloProb, b.eloProb)}%
+          <Zap size={11} className="text-accent" /> Elo favorite:{' '}
+          {a.eloProb >= b.eloProb ? a.ticker : b.ticker} {Math.max(a.eloProb, b.eloProb)}%
         </span>
         {battle.hasBets ? (
           <span>
-            pool {money(battle.pool)} · {battle.traders} {battle.traders === 1 ? 'backer' : 'backers'}
+            pool {money(battle.pool)} · {battle.traders}{' '}
+            {battle.traders === 1 ? 'backer' : 'backers'}
           </span>
         ) : (
           <span>No bets yet</span>
@@ -217,7 +240,8 @@ function BattleCard({ battle, user, onChange }) {
                   <span className="absolute left-2.5 top-2 text-slate-500 text-sm">$</span>
                   <input
                     type="number"
-                    min="0"
+                    min="0.01"
+                    step="0.01"
                     className="input pl-6 w-28"
                     value={stake}
                     onChange={(e) => setStake(e.target.value)}
@@ -265,9 +289,9 @@ function BattleCard({ battle, user, onChange }) {
 
 function MyBattles({ positions }) {
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-x-auto">
       <div className="px-4 py-3 border-b border-edge text-sm font-semibold text-white">My battles</div>
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[620px] text-sm">
         <tbody>
           {positions.map((p) => {
             const settled = p.status === 'settled'
@@ -280,7 +304,9 @@ function MyBattles({ positions }) {
                 <td className="px-4 text-right font-mono text-slate-400">{money(p.stake)}</td>
                 <td className="px-4 text-right">
                   {!settled ? (
-                    <span className="text-xs text-slate-500">open</span>
+                    <span className="text-xs text-slate-500">
+                      {p.status === 'closing' ? 'settling' : 'open'}
+                    </span>
                   ) : p.won ? (
                     <span className="font-mono text-up">won {money(p.payout)}</span>
                   ) : (

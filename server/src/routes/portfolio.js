@@ -1,21 +1,41 @@
 import { Router } from 'express'
 import db from '../db.js'
 import { requireAuth } from '../auth.js'
+import { executionPriceFor, perVoteValue } from '../pricing.js'
 
 const router = Router()
+const cents = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
 
 router.get('/', requireAuth, (req, res) => {
   const holdings = db
     .prepare(
-      `SELECT h.shares, h.avg_cost, m.id AS model_id, m.slug, m.name, m.ticker, m.color, m.price, m.prev_close
-         FROM holdings h JOIN models m ON m.id = h.model_id
+      `SELECT h.shares, h.avg_cost,
+              m.id AS model_id, m.slug, m.name, m.ticker, m.color,
+              m.price AS public_price, m.prev_close, m.base_votes,
+              m.like_count, m.dislike_count, m.sentiment,
+              s.api_price, COALESCE(v.value, 0) AS my_vote
+         FROM holdings h
+         JOIN models m ON m.id = h.model_id
+         LEFT JOIN model_signals s ON s.id = (
+           SELECT id FROM model_signals WHERE model_id = m.id
+            ORDER BY captured_at DESC, id DESC LIMIT 1
+         )
+         LEFT JOIN votes v ON v.model_id = m.id AND v.user_id = h.user_id
         WHERE h.user_id = ? AND h.shares > 0
         ORDER BY (h.shares * m.price) DESC`
     )
     .all(req.user.id)
 
   const positions = holdings.map((h) => {
-    const value = h.shares * h.price
+    const price = executionPriceFor({
+      baseVotes: h.base_votes,
+      likes: h.like_count,
+      dislikes: h.dislike_count,
+      myVote: h.my_vote,
+      tokenPrice: h.api_price,
+      sentiment: h.sentiment
+    })
+    const value = h.shares * price
     const cost = h.shares * h.avg_cost
     return {
       modelId: h.model_id,
@@ -25,20 +45,38 @@ router.get('/', requireAuth, (req, res) => {
       color: h.color,
       shares: h.shares,
       avgCost: h.avg_cost,
-      price: h.price,
-      value: +value.toFixed(2),
-      cost: +cost.toFixed(2),
-      pnl: +(value - cost).toFixed(2),
+      price,
+      publicPrice: h.public_price,
+      perVoteValue: perVoteValue(h.api_price),
+      baseVotes: h.base_votes || 0,
+      likes: h.like_count || 0,
+      dislikes: h.dislike_count || 0,
+      myVote: h.my_vote || 0,
+      selfVoteExcluded: h.my_vote !== 0,
+      value: cents(value),
+      cost: cents(cost),
+      pnl: cents(value - cost),
       pnlPct: cost ? +(((value - cost) / cost) * 100).toFixed(2) : 0
     }
   })
 
-  const holdingsValue = +positions.reduce((a, p) => a + p.value, 0).toFixed(2)
-  const cash = +req.user.cash.toFixed(2)
+  const locked = db
+    .prepare(
+      `SELECT
+         COALESCE((SELECT SUM(stake) FROM market_positions WHERE user_id = ? AND settled = 0), 0) +
+         COALESCE((SELECT SUM(stake) FROM battle_bets WHERE user_id = ? AND settled = 0), 0)
+         AS total`
+    )
+    .get(req.user.id, req.user.id).total
+
+  const holdingsValue = cents(positions.reduce((a, p) => a + p.value, 0))
+  const lockedStake = cents(locked)
+  const cash = cents(req.user.cash)
   res.json({
     cash,
     holdingsValue,
-    netWorth: +(cash + holdingsValue).toFixed(2),
+    lockedStake,
+    netWorth: cents(cash + holdingsValue + lockedStake),
     positions
   })
 })

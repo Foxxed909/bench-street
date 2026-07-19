@@ -8,3 +8,12 @@ server/data/*.db
 server/data/*.db-journal
 server/data/*.db-wal
 server/data/*.db-shm
+
+# local capture artifacts
+.playwright-mcp/
+*.jpeg
+board-*.png
+benchtest-board.png
+chess-redesign-*.png
+compare-h2h.png
+running-view.png

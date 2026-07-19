@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import db from '../db.js'
-import { VOTE_RATE, perVoteValue, pushModelPrice } from '../pricing.js'
+import { executionPriceFor, VOTE_RATE, perVoteValue, pushModelPrice } from '../pricing.js'
 import { signalsStatus } from '../ingest.js'
 import { optionalAuth, requireAuth } from '../auth.js'
 
@@ -21,6 +21,14 @@ function decorate(m, myVote = 0) {
   const likes = m.like_count || 0
   const dislikes = m.dislike_count || 0
   const total = likes + dislikes
+  const executionPrice = executionPriceFor({
+    baseVotes: m.base_votes,
+    likes,
+    dislikes,
+    myVote,
+    tokenPrice: m.api_price,
+    sentiment: m.sentiment
+  })
   return {
     id: m.id,
     slug: m.slug,
@@ -30,6 +38,8 @@ function decorate(m, myVote = 0) {
     openSource: !!m.open_source,
     color: m.color,
     price: m.price,
+    executionPrice,
+    selfVoteExcluded: myVote !== 0,
     prevClose: m.prev_close,
     tokenPrice: m.api_price ?? null,
     perVoteValue: perVoteValue(m.api_price),
@@ -166,10 +176,35 @@ router.post('/:slug/vote', requireAuth, (req, res) => {
     syncTallies(m.id)
   })()
 
-  const c = db.prepare('SELECT like_count, dislike_count FROM models WHERE id = ?').get(m.id)
-  // Net sentiment is the price: recompute this model and broadcast it live.
+  const current = db
+    .prepare(
+      `SELECT m.like_count, m.dislike_count, m.base_votes, m.sentiment, s.api_price
+         FROM models m
+         LEFT JOIN model_signals s ON s.id = (
+           SELECT id FROM model_signals WHERE model_id = m.id
+            ORDER BY captured_at DESC, id DESC LIMIT 1
+         )
+        WHERE m.id = ?`
+    )
+    .get(m.id)
+  // Net sentiment is the public price: recompute this model and broadcast it live.
   const price = pushModelPrice(req.app.get('io'), m.id)
-  res.json({ ok: true, myVote, likes: c.like_count, dislikes: c.dislike_count, price })
+  const executionPrice = executionPriceFor({
+    baseVotes: current.base_votes,
+    likes: current.like_count,
+    dislikes: current.dislike_count,
+    myVote,
+    tokenPrice: current.api_price,
+    sentiment: current.sentiment
+  })
+  res.json({
+    ok: true,
+    myVote,
+    likes: current.like_count,
+    dislikes: current.dislike_count,
+    price,
+    executionPrice
+  })
 })
 
 const COMMENT_MAX = 500
@@ -219,9 +254,14 @@ router.post('/:slug/comments', requireAuth, (req, res) => {
   res.status(201).json({ comment: commentRow(c, req.user.id) })
 })
 
-// Delete a comment (author or admin).
+// Delete a comment (author or admin). Scope the resource to the model in the URL.
 router.delete('/:slug/comments/:id', requireAuth, (req, res) => {
-  const c = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id)
+  const m = db.prepare('SELECT id FROM models WHERE slug = ?').get(req.params.slug)
+  if (!m) return res.status(404).json({ error: 'model not found' })
+
+  const c = db
+    .prepare('SELECT * FROM comments WHERE id = ? AND model_id = ?')
+    .get(req.params.id, m.id)
   if (!c) return res.status(404).json({ error: 'comment not found' })
   if (c.user_id !== req.user.id && !req.user.is_admin) {
     return res.status(403).json({ error: 'not your comment' })

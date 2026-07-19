@@ -1,12 +1,16 @@
-# Render blueprint for the Bench Street backend (Node + Express + Socket.io + SQLite).
-# Deploy: push this repo to GitHub → Render → New → Blueprint → pick the repo.
+# Alternative Render blueprint for the Bench Street backend.
 #
-# Free-tier caveats (fine for a demo, not for "always live"):
-#   - The service sleeps after ~15 min idle and cold-starts on the next request.
-#   - The disk is ephemeral: the SQLite DB resets on each deploy/restart, then
-#     re-seeds automatically on boot (models/markets/battles return; votes/trades reset).
-#   For persistence + no sleeping, use a paid instance with a Disk mounted at server/data,
-#   or host on Railway/Fly instead.
+# Canonical production deployment:
+#   Frontend: https://benchstreet.vercel.app
+#   API:      https://bench-street-api-production.up.railway.app
+#
+# Use this blueprint only when intentionally moving the backend away from Railway.
+# Update Vercel's VITE_API_URL after the replacement Render health endpoint and
+# Socket.io connection have both been verified.
+#
+# Free-tier caveats:
+#   - The service can sleep when idle and cold-start on the next request.
+#   - Without a persistent disk, SQLite data is ephemeral.
 services:
   - type: web
     name: bench-street-api
@@ -24,6 +28,10 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
-      # Lock this down to your Vercel URL once deployed, e.g. https://bench-street.vercel.app
       - key: CLIENT_ORIGIN
-        value: '*'
+        value: https://benchstreet.vercel.app
+      # Configure these explicitly before using Render for production:
+      # - key: ADMIN_USER_IDS
+      #   value: '<numeric user IDs>'
+      # - key: DATA_DIR
+      #   value: /var/data

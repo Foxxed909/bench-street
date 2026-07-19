@@ -1,49 +1,118 @@
-# 📈 Bench Street
+# Bench Street
 
-A play-money exchange where you trade **real AI models like stocks**. Prices are driven
-by a weighted index of real performance signals (LMArena ELO, OpenRouter usage,
-benchmarks, downloads, API price) plus live **player demand** — when traders pile into a
-model, its price climbs above fundamental; when they sell, it sinks. There's also a
-parimutuel **prediction market** for betting on AI events.
+A play-money market for following and debating AI models through a financial interface.
+Users receive virtual credits, buy and sell model shares, vote models up or down, make
+predictions about AI events, and back randomized Elo-weighted matchups in the Arena.
 
-> Play money only. Prices are simulated. Not investment advice.
+> Play money only. No deposits, withdrawals, or real-world securities. Prices and payouts
+> are game mechanics, not financial advice.
+
+## Production URLs
+
+- **Canonical app:** <https://benchstreet.vercel.app>
+- **API:** <https://bench-street-api-production.up.railway.app>
+- **API health:** <https://bench-street-api-production.up.railway.app/api/health>
+- **Repository:** <https://github.com/Foxxed909/bench-street>
+- **Deployment details:** [`DEPLOY.md`](./DEPLOY.md)
+
+Use the canonical app URL in public links and shared model pages. Vercel's generated project domain
+is retained only as a fallback origin and deployment diagnostic.
+
+## Current mechanics
+
+### Model prices
+
+Bench Street is a **vote-priced index**, not an order book. Buying and selling shares does not
+move a model's public quote and there is no counterparty, spread, or slippage.
+
+```text
+public price units = max(0, opening units + likes - dislikes)
+per-vote value     = $5 × clamp(0.5, 2.0, blended API $/Mtok ÷ 5)
+public share price = public price units × per-vote value
+```
+
+- **Opening units** are a curated quality baseline derived from the seeded benchmark score, so
+  active models begin with a non-zero ranked opening line.
+- **Community sentiment** moves the public line one unit per like/dislike. Each signed-in user has
+  one toggleable stance per model.
+- **Self-dealing guard:** an account's own stance is excluded from that account's execution price,
+  portfolio value, and leaderboard rank. A user can still vote and hold a model, but cannot buy,
+  move the quote with that vote, and realize the manufactured move on the same account.
+- This guard closes the single-account loop; it does not solve coordinated or Sybil accounts.
+  Identity verification, reputation weighting, and manipulation monitoring remain future work.
+- **API cost** scales the dollar value of each unit. OpenRouter refreshes can therefore reprice a
+  model even when its net vote count is unchanged.
+- Elo, usage, downloads, and benchmark bars are context. They do not directly enter the current
+  price formula.
+- Suspended and upcoming models remain visible but cannot be voted on or traded.
+
+### Predictions and Arena
+
+- Prediction markets use parimutuel pools: the final combined pool is paid pro-rata to backers of
+  the winning outcome. Some markets auto-resolve from Bench Street data; others require an admin.
+- Arena battles are two-sided parimutuel pools. The winner is a random draw weighted by the two
+  models' latest Elo-derived win probability; the app does not currently run the models against
+  prompts during settlement.
+
+### Live data
+
+The backend periodically attempts to ingest LMArena ratings, OpenRouter token prices, and
+HuggingFace downloads. Missing sources fall back to the most recent stored values. The roster also
+contains curated opening data and generated benchmark/effort-tier values, so every displayed metric
+should not be assumed to come from a live provider.
 
 ## Stack
-- **Client:** React 18 · Vite · Tailwind · Recharts · socket.io-client
-- **Server:** Node · Express · better-sqlite3 · Socket.io · JWT
+
+- **Client:** React 18, Vite, Tailwind CSS, Recharts, Socket.io client
+- **Server:** Node.js, Express, better-sqlite3, Socket.io, JWT, bcrypt
+- **Production:** Vercel frontend, Railway backend, Railway persistent volume for SQLite
 
 ## Quickstart
-```bash
-npm run install:all     # install root + server + client deps
-npm run dev             # server on :4000, client on :5173 (Vite proxies /api + /socket.io)
-```
-Then open http://localhost:5173 and create an account — you start with $100,000 in credits.
 
-To reseed the database from scratch:
+```bash
+npm run install:all
+npm run dev
+```
+
+Open <http://localhost:5173>. The API runs on <http://localhost:4000>; Vite proxies `/api` and
+`/socket.io` during local development. New accounts start with `$100,000` in virtual credits unless
+`STARTING_BALANCE` is configured.
+
+## Tests and build
+
+```bash
+npm test --prefix server
+npm run build --prefix client
+```
+
+Pull requests also run server syntax checks, server tests, and a production client build in GitHub
+Actions.
+
+## Seeding and persistence
+
 ```bash
 npm run seed
 ```
 
-## How pricing works
-1. **Live from zero** — every model launches at **$0** and only gains value as people vote.
-   No pre-seeded prices, no simulation, no fabricated volatility.
-2. **Price = votes × per-vote value** — each vote is worth a `$5` base scaled ×0.5–2.0 by the
-   model's blended API price (`costFactor = clamp(0.5, 2, $/Mtok ÷ 5)`). A vote on a pricey
-   frontier model moves it more than a vote on a cheap one. See `server/src/pricing.js`.
-3. **Event-driven** — voting recomputes the model's price, persists a candle, and broadcasts it
-   over Socket.io instantly. Token-price refreshes (every ~10 min) also re-price and rebroadcast.
-   Trading is disabled until a model has a price.
+The seed command idempotently upserts the current roster and starter markets. It is **not** a full
+account/economy reset. For a genuinely fresh local database, stop the server and remove the local
+SQLite file under `server/data/` before starting again. Never delete the production volume merely
+to refresh roster data.
 
-## Layout
-```
+## Repository map
+
+```text
 server/src/
-  db.js         schema + migrations
-  seed.js       ~22-model roster + starter prediction markets
-  pricing.js    fundamental index + demand + tick loop
-  auth.js       JWT + bcrypt
-  routes/       auth · models · trade · portfolio · markets · leaderboard
+  db.js             schema and additive migrations
+  seed.js           roster, opening data, markets, and starter battles
+  pricing.js        public/self-neutralized pricing, candles, and daily close
+  ingest.js         external signal refresh and freshness tracking
+  resolver.js       automatic prediction resolution
+  battles.js        Arena generation and settlement
+  routes/           auth, models, trading, portfolio, markets, Arena, leaderboard, admin
+
 client/src/
-  pages/        Floor · ModelDetail · Portfolio · Predictions · Leaderboard · Login
-  components/    Nav · TickerTape · MarketStats · FlashNum · FlowBar · Sparkline
-  store/        auth · prices (Socket.io context)
+  pages/            Floor, ModelDetail, Portfolio, Predictions, Arena, Leaderboard, Login
+  components/       navigation, market stats, charts, voting, comments, benchmarks
+  store/            authentication and live Socket.io prices
 ```
