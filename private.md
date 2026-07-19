@@ -1,5 +1,31 @@
 # Bench Street — Internal Notes
 
+## v1.6.0 — Integrity merge + review fixes (2026-07-19)
+Merged the remote hardening PR (#1, was only on origin/main — local main was stale) into the
+sentiment branch, then fixed the two bugs an in-depth review confirmed on this branch:
+- **Outcome-label drift (regression, this branch).** The July roster commit renamed
+  `gpt-5-6-pro` → "GPT-5.6 Sol Pro" but `bridgebench-top-2026` / `most-valued-2026` outcome
+  labels still said "GPT-5.6 Pro". resolver.js maps winners BY display name → those markets
+  could never auto-resolve if Sol Pro won (it was the BridgeBench favourite). Fixed the MARKETS
+  labels + added a positional label-sync backfill in seed.js for unresolved markets on existing
+  DBs. Regression-locked in `test/seed.test.js`.
+- **Sentiment prefix leak (regression, this branch).** `sentiment.js` spread scores to effort
+  variants with `name LIKE ? || '%'`; variants share the EXACT name, so the prefix hit distinct
+  models ("Grok 4" → Grok 4.5/4.3/mini; "GPT-5.5" → GPT-5.5 Pro). Now exact-name via
+  `applySentiment()`. Local DB contamination zeroed one-off (prod never ran sentiment).
+  Regression-locked in `test/sentiment.test.js`.
+- **Merge seam:** the PR's `executionPriceFor` predated sentiment — execution/portfolio/
+  leaderboard quotes ignored the tilt while the board included it. Sentiment now threads
+  through all five call sites; asserted in `test/votes-trades.test.js`.
+- The PR already fixed the review's other two findings: Arena battles on suspended/upcoming
+  models (status filter) and curated-Elo-as-live auto-resolution (`hasLiveArenaSignal`).
+- **Tests 18 → 61** (8 files): DB-harness suites (temp `DATA_DIR` per file) for settlement
+  (pro-rata, cent conservation, refunds, double-settle), seed invariants (idempotency,
+  label sync), sentiment isolation, and HTTP-level vote/trade flows.
+- **Depersonalized:** dev admin default 'sylvie' → 'admin' (prod already ID-based via
+  `ADMIN_USER_IDS`; boot demotes stale admins — local dev must re-set ADMIN_USERNAMES or
+  sign up as 'admin'). Personal names scrubbed from docs; capture artifacts gitignored.
+
 ## Roster + market-clarity pass (v1.5.0) — 2026-06-20
 Triggered by an external blind product audit (public-surface only — couldn't log in, so it
 guessed the backend and ~half its P0s were already shipped). See `TODO.md` "External product
@@ -19,7 +45,7 @@ audit" section for the full triage. Fixed the genuinely-valid, fixable items:
   real `volume`/`pool` (was `|| 1`). Predictions.jsx shows pool + trader count per card + exact UTC
   close on hover.
 - **DEFERRED:** A10 (separate fundamentals from price via AMM/LMSR) is a real rearchitecture —
-  flagged as a product decision for Nifemi, NOT started. Plus mobile/a11y/news-tape/indices.
+  flagged as a product decision for the owner, NOT started. Plus mobile/a11y/news-tape/indices.
 
 ### TODO #5 — PERSISTENT VOLUME — FIXED 2026-06-20 (was the real landmine)
 `railway volume list` → **"No volumes found"**: prod SQLite was on ephemeral fs, wiped every deploy.
@@ -45,7 +71,7 @@ Railway (server, deploy 2ccfb873, verified new code live via socket request-snap
   regen — `rm -rf node_modules package-lock.json && npm install`, then verify with `npm ci` LOCALLY
   before pushing. Always run `npm ci` locally after touching server deps.
 - **New `server/src/config.js`** — single source of truth for the admin allowlist + JWT secret +
-  STARTING_BALANCE. `ADMIN_USERNAMES` (csv) || `ADMIN_USERNAME` || 'sylvie'. `isAdminUsername()` is
+  STARTING_BALANCE. `ADMIN_USERNAMES` (csv) || `ADMIN_USERNAME` || dev default. `isAdminUsername()` is
   case-insensitive. JWT_SECRET **throws on boot** in production if it's unset/the dev default.
 - **#1 admin (security)** — removed `userCount===0` first-signup auto-admin from auth.js `createUser`;
   now `isAdminUsername(username)` only. db.js boot block reconciles ALL allowlisted names (idempotent),
@@ -91,7 +117,7 @@ all-$0 dead board; user chose "seed a quality opening line" via AskUserQuestion.
 - **#7 24h%** — resolved by opening line (prev_close>0 now, so intraday moves show).
 - **#8 plural** — Floor sector chip "model"/"models".
 - **#9 mobile nav** — Nav.jsx hamburger + dropdown (`md:hidden`), shared LINKS array; wallet stays in bar.
-- **#10 admin** — db.js only auto-promotes `ADMIN_USERNAME` (default 'sylvie'), never a random first signup.
+- **#10 admin** — db.js only auto-promotes `ADMIN_USERNAME` (dev default), never a random first signup.
 - **Design overhaul (user req: kill void-black, fix vibe-coded borders, add skeuomorphism, bento grid).**
   tailwind: `ink` #07080c→#0a0b16 (indigo), panel/panel2/edge bluer, `shadow-raise`/`shadow-sunken`,
   `bg-panel-raise`. index.css: body indigo + violet/blue/gold radial auroras; `.card` skeuomorphic
@@ -252,8 +278,8 @@ all-$0 dead board; user chose "seed a quality opening line" via AskUserQuestion.
   the prior snapshot (12s timeout, AbortController). Verified live: 22 prices + 8 downloads.
 - **Admin model**: first-registered user (or names in ADMIN_USERNAMES) becomes admin; a db
   migration also promotes the earliest user if none is admin. `requireAdmin` guards resolve
-  + refresh routes. NOTE: in this dev DB the admin is **sylvie** (id 1, pw secret123), not
-  trader_demo — sylvie predates trader_demo.
+  + refresh routes. NOTE: in this dev DB the admin is the dev account (id 1), not
+  trader_demo — it predates trader_demo.
 - **Resolution/payout** (`routes/markets.js`): `effectiveStatus` derives open/closed/resolved
   from closes_at; `POST /:slug/resolve` (admin) pays winners pro-rata `stake/winPool·total`,
   marks positions settled, credits cash. Verified exact: $2000 on a 6200/12000 pool → $3870.97.
@@ -327,7 +353,7 @@ all-$0 dead board; user chose "seed a quality opening line" via AskUserQuestion.
   Why-this-price; MarketStats "Most voted" highlight. `FlowBar.jsx` deleted (dead).
 - **Verified:** 15 votes → Phi-4 +34% to target $293.15; toggle 1↔0 works; in-UI click 15→16.
 - **Clean slate (2026-06-15):** wiped all dummy data — deleted the dev DB and re-seeded, so
-  there are NO users (incl. the old sylvie/trader_demo/voter_* test accounts), votes, trades,
+  there are NO users (incl. the old dev/trader_demo/voter_* test accounts), votes, trades,
   or bets; only seeded content (22 models, 13 markets, 4 battles) remains. First new signup
   becomes admin (createUser makes user #1 admin). To reset again: stop server, delete
   `server/data/bench-street.db*`, `npm run seed`, restart.

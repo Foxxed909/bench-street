@@ -5,17 +5,17 @@ import { isAdminUsername, ADMIN_USER_IDS, ADMIN_USERNAMES } from '../src/config.
 // Local/test development keeps a convenient username allowlist. Production uses
 // immutable user IDs so a squatted public username can never become an administrator.
 describe('admin identity configuration', () => {
-  it('keeps the sylvie development fallback', () => {
-    expect(ADMIN_USERNAMES).toContain('sylvie')
+  it('keeps the development fallback allowlist', () => {
+    expect(ADMIN_USERNAMES).toContain('admin')
     expect(ADMIN_USER_IDS).toEqual([])
-    expect(isAdminUsername('sylvie')).toBe(true)
-    expect(isAdminUsername('Sylvie')).toBe(true)
-    expect(isAdminUsername('  SYLVIE  '.trim())).toBe(true)
+    expect(isAdminUsername('admin')).toBe(true)
+    expect(isAdminUsername('Admin')).toBe(true)
+    expect(isAdminUsername('  ADMIN  '.trim())).toBe(true)
   })
 
   it('rejects everyone not on the development name list', () => {
-    expect(isAdminUsername('admin')).toBe(false)
-    expect(isAdminUsername('nifemi')).toBe(false)
+    expect(isAdminUsername('root')).toBe(false)
+    expect(isAdminUsername('someone-else')).toBe(false)
     expect(isAdminUsername('')).toBe(false)
     expect(isAdminUsername(null)).toBe(false)
     expect(isAdminUsername(undefined)).toBe(false)
@@ -34,7 +34,7 @@ describe('admin identity configuration', () => {
         NODE_ENV: 'production',
         JWT_SECRET: 'test-only-strong-secret',
         ADMIN_USER_IDS: '7,42',
-        ADMIN_USERNAMES: 'sylvie'
+        ADMIN_USERNAMES: 'admin'
       }
     })
     expect(JSON.parse(output.trim())).toEqual({ ids: [7, 42], names: [] })

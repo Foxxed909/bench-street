@@ -52,22 +52,29 @@ async function titlesFor(name) {
   return titles.filter(Boolean)
 }
 
+// Store a model's score and copy it to its effort variants. Low/high variants share
+// the base model's exact display name, so this must match the name EXACTLY — a
+// prefix match would leak scores across distinct models ("Grok 4" → "Grok 4.5",
+// "GPT-5.5" → "GPT-5.5 Pro").
+const updById = db.prepare('UPDATE models SET sentiment = ? WHERE id = ?')
+const updByName = db.prepare('UPDATE models SET sentiment = ? WHERE name = ?')
+export function applySentiment(modelId, name, score) {
+  updById.run(score, modelId)
+  updByName.run(score, name)
+}
+
 // Refresh sentiment for all ACTIVE models (sequential + gentle: these are
 // unauthenticated public endpoints). Returns count updated.
 export async function refreshSentiment({ log = console.log, io = null } = {}) {
   const models = db
     .prepare("SELECT id, name FROM models WHERE status = 'active' AND effort IS NOT 'low' AND effort IS NOT 'high'")
     .all()
-  const upd = db.prepare('UPDATE models SET sentiment = ? WHERE id = ?')
-  const spread = db.prepare("UPDATE models SET sentiment = ? WHERE name LIKE ? || '%'")
   let n = 0
   for (const m of models) {
     const titles = await titlesFor(m.name)
     if (!titles.length) continue
     const score = aggregate(titles.map(scoreText))
-    upd.run(score, m.id)
-    // Effort variants (low/high) share the base model's public perception.
-    spread.run(score, m.name)
+    applySentiment(m.id, m.name, score)
     n++
     await new Promise((r) => setTimeout(r, 1500)) // be polite to free endpoints
   }

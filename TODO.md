@@ -23,7 +23,7 @@ claude-fable-5: 96), July 2026 roster (Sol/Terra/Luna, Kimi K3, Grok 4.5).
 **Sentiment follow-ups:**
 - [ ] **S1. LLM classification instead of lexicon** — lexicon misses sarcasm/context; a cheap free-tier model could label titles pos/neg/neutral.
 - [ ] **S2. More sources** — X needs a paid API; consider lobste.rs, YouTube titles, product review sites. Per-source weighting.
-- [ ] **S3. Show sentiment in the client** — a tide gauge on ModelDetail + Floor column; today it's server-only and invisible.
+- [x] **S3. Show sentiment in the client** — a tide gauge on ModelDetail + Floor column; today it's server-only and invisible.
 - [ ] **S4. Sentiment history** — store per-refresh snapshots so we can chart perception over time (and detect launch-hype decay).
 - [ ] **S5. Name-collision queries** — "Sol"/"Luna" pull crypto noise; quote full names, maybe require a lab keyword in the hit.
 
@@ -62,13 +62,13 @@ happen). Model detail pages already exist (`ModelDetail.jsx`).
 - [ ] **A7. Leaderboard empty-state** — seed labelled demo bots, "season begins at N traders."
 - [ ] **A8. News/event tape** — verified events attached to affected models ("Trade this event").
 - [ ] **A9. Capability indices** (coding/agent/reasoning/etc.) and lab ETFs.
-- [ ] **A10. Separate fundamentals from price (AMM/LMSR).** Today price moves on likes−dislikes anchored to bench. The audit wants an order-flow market maker with sentiment kept separate. This is a deliberate rearchitecture — a decision for Nifemi, not a bug. **Discuss before building.**
+- [ ] **A10. Separate fundamentals from price (AMM/LMSR).** Today price moves on likes−dislikes anchored to bench. The audit wants an order-flow market maker with sentiment kept separate. This is a deliberate rearchitecture — an owner decision, not a bug. **Discuss before building.**
 
 ---
 
 ## P0 — Security & correctness (do first)
 
-- [x] **1. Admin promotion is contradictory and unsafe.** `auth.js:createUser` promotes the *first* signup (`userCount === 0`) and anyone whose name is in `ADMIN_USERNAMES` (default `'admin'`). But `db.js:205` claims it "never silently promote a random first signup" and uses a *different* env var (`ADMIN_USERNAME`, default `'sylvie'`). On a fresh prod DB, whoever signs up first becomes admin, and anyone registering as `admin` becomes admin. Pick ONE source of truth: an env allowlist, never signup order. (`server/src/auth.js:18-36`, `server/src/db.js:204-212`)
+- [x] **1. Admin promotion is contradictory and unsafe.** `auth.js:createUser` promotes the *first* signup (`userCount === 0`) and anyone whose name is in `ADMIN_USERNAMES` (default `'admin'`). But `db.js:205` claims it "never silently promote a random first signup" and uses a *different* env var (`ADMIN_USERNAME`, dev default). On a fresh prod DB, whoever signs up first becomes admin, and anyone registering as `admin` becomes admin. Pick ONE source of truth: an env allowlist, never signup order. (`server/src/auth.js:18-36`, `server/src/db.js:204-212`)
 - [x] **2. JWT_SECRET silently defaults to `'dev-secret-change-me'`.** If the env var is unset in prod, every token is forgeable — full account takeover. Refuse to boot in production when `JWT_SECRET` is missing/default. (`server/src/auth.js:5`)
 - [x] **3. No rate limiting anywhere.** Login/signup are brute-forceable; vote/trade/comment are spammable. Add `express-rate-limit` (tight on `/auth`, looser elsewhere). (`server/src/index.js`)
 - [x] **4. No input validation on usernames/email.** No length cap, charset rules, or email-format check — garbage/huge values get stored and rendered (comments, leaderboard). Add a small validator (zod or hand-rolled). (`server/src/routes/auth.js:13-26`)

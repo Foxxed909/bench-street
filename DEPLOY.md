@@ -43,8 +43,7 @@ Create or sign in to the intended account, read its `id` from `/api/auth/me`, se
 and revokes stale administrators. `ADMIN_USERNAMES` remains a development-only convenience.
 
 Mount the Railway volume at `/data`. Without the volume, SQLite users, votes, trades, comments,
-and positions disappear when the container filesystem is replaced, because apparently persistence
-must still be requested explicitly in the twenty-first century.
+and positions disappear when the container filesystem is replaced on each deploy.
 
 ### Vercel frontend
 

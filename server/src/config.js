@@ -21,7 +21,7 @@ if (ADMIN_USER_IDS.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
 // compatibility. It is deliberately ignored in production; use ADMIN_USER_IDS there.
 const rawAdmins = IS_PRODUCTION
   ? ''
-  : process.env.ADMIN_USERNAMES ?? process.env.ADMIN_USERNAME ?? 'sylvie'
+  : process.env.ADMIN_USERNAMES ?? process.env.ADMIN_USERNAME ?? 'admin'
 
 export const ADMIN_USERNAMES = rawAdmins
   .split(',')

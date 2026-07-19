@@ -106,6 +106,8 @@ function expandEfforts(list) {
 }
 
 const ROSTER = expandEfforts([...BASE_ROSTER, ...VARIANTS])
+// Exported for tests (roster/market invariants — e.g. resolver labels must match names).
+export { ROSTER }
 
 // Curated benchmark suite shown per model. Scores derive from each model's
 // composite quality (`bench`) with a per-benchmark bias + a stable jitter, so
@@ -264,7 +266,7 @@ const MARKETS = [
     question: 'Which model tops BridgeBench at year-end 2026?',
     rules: 'Auto-resolves at close (2026-12-31 UTC) to whichever of the listed models has the highest BridgeBench score on Bench Street.',
     outcomes: [
-      { label: 'GPT-5.6 Pro', pool: 3200 },
+      { label: 'GPT-5.6 Sol Pro', pool: 3200 },
       { label: 'Gemini 3.5 Pro', pool: 2400 },
       { label: 'Claude Opus 4.8', pool: 2000 },
       { label: 'Grok 4.3 Heavy', pool: 1800 },
@@ -276,7 +278,7 @@ const MARKETS = [
     rules: 'Auto-resolves at close (2026-12-31 UTC) to whichever of the listed models has the highest share price (set by community votes).',
     outcomes: [
       { label: 'Claude Opus 4.8', pool: 2400 },
-      { label: 'GPT-5.6 Pro', pool: 2200 },
+      { label: 'GPT-5.6 Sol Pro', pool: 2200 },
       { label: 'Gemini 3.5 Pro', pool: 2000 },
       { label: 'Grok 4.3 Heavy', pool: 1800 },
       { label: 'o4', pool: 1600 }
@@ -286,6 +288,8 @@ const MARKETS = [
     rules: 'Both models were suspended 2026-06-12 under a US government export directive. Resolves YES if Anthropic restores general access to either Fable 5 or Mythos 5 before 2027-01-01 UTC.',
     outcomes: YN(5500, 4500) }
 ]
+// Exported for tests (see ROSTER export above).
+export { MARKETS }
 
 // Head-to-head battles. closesInMin from seed time; the auto-settle loop resolves them
 // by Elo win-probability when they close (admin can force-settle sooner).
@@ -437,6 +441,26 @@ export function seedDatabase({ force = false } = {}) {
           resolution: mk.resolution || 'admin',
           resolver: mk.resolver ? JSON.stringify(mk.resolver) : null,
           rules: mk.rules || null
+        })
+      }
+    })()
+
+    // Sync outcome labels on unresolved markets to the current MARKETS definitions
+    // (positionally — outcome ids preserve insert order, and bets reference ids, not
+    // labels, so a rename is safe). The auto-resolver maps a winning model back to
+    // its outcome BY LABEL, so a model rename (e.g. "GPT-5.6 Pro" → "GPT-5.6 Sol
+    // Pro") would otherwise leave the market permanently unresolvable.
+    const marketBySlug = db.prepare("SELECT id FROM markets WHERE slug = ? AND status != 'resolved'")
+    const outcomesFor = db.prepare('SELECT id, label FROM market_outcomes WHERE market_id = ? ORDER BY id')
+    const renameOutcome = db.prepare('UPDATE market_outcomes SET label = ? WHERE id = ?')
+    db.transaction(() => {
+      for (const mk of MARKETS) {
+        const market = marketBySlug.get(mk.slug)
+        if (!market) continue
+        const existing = outcomesFor.all(market.id)
+        if (existing.length !== mk.outcomes.length) continue
+        existing.forEach((o, i) => {
+          if (o.label !== mk.outcomes[i].label) renameOutcome.run(mk.outcomes[i].label, o.id)
         })
       }
     })()

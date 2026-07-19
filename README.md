@@ -42,6 +42,9 @@ public share price = public price units × per-vote value
   Identity verification, reputation weighting, and manipulation monitoring remain future work.
 - **API cost** scales the dollar value of each unit. OpenRouter refreshes can therefore reprice a
   model even when its net vote count is unchanged.
+- **Internet sentiment** tilts the final price by at most ±15%. An hourly job searches Hacker News
+  and Reddit for each active model, scores recent titles with a small lexicon, and stores a −1..1
+  score per model. Votes remain the primary driver; sentiment is a bounded multiplier.
 - Elo, usage, downloads, and benchmark bars are context. They do not directly enter the current
   price formula.
 - Suspended and upcoming models remain visible but cannot be voted on or traded.
@@ -107,6 +110,7 @@ server/src/
   seed.js           roster, opening data, markets, and starter battles
   pricing.js        public/self-neutralized pricing, candles, and daily close
   ingest.js         external signal refresh and freshness tracking
+  sentiment.js      hourly HN/Reddit sentiment scoring
   resolver.js       automatic prediction resolution
   battles.js        Arena generation and settlement
   routes/           auth, models, trading, portfolio, markets, Arena, leaderboard, admin

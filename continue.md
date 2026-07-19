@@ -230,7 +230,7 @@ Verify on https://benchstreet.vercel.app (use Playwright, check console = 0 erro
 - **Vercel** alias is pinned in `client/vercel.json` `"alias"`; just `vercel --prod`.
 - **VITE_API_URL BOM** bug already fixed (`.trim()` in api.js + socket.js). Don't pipe
   env vars via PowerShell `$x | vercel env add` (injects U+FEFF).
-- **Admin** = first registered user (locally: `sylvie` / `secret123`).
+- **Admin** = first registered user (locally: the configured dev admin account).
 - Don't commit `.env`; don't install new deps without asking.
 - After shipping: update `public.md`, `private.md`, and the
   `bench-street-project` memory file with a **v1.0** entry.

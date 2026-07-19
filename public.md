@@ -1,5 +1,30 @@
 # Bench Street — Public Changelog
 
+## v1.6.0 — Sentiment pricing, July roster, market-integrity merge (2026-07-19)
+
+### Features
+- **Internet sentiment now tilts prices.** An hourly job reads recent Hacker News and Reddit
+  chatter for each active model and applies a bounded ±15% tilt to its price. Votes remain the
+  primary driver; sentiment is the tide, not the wheel. Shown as a gauge on model pages and a
+  column on the Floor.
+- **July 2026 releases listed.** GPT-5.6 Sol / Terra / Luna, Kimi K3, and Grok 4.5 now trade.
+- **Benchtest scores on the board.** In-house benchmark results appear alongside the public
+  benchmarks on each model's card.
+
+### Fixes
+- **Auto-resolving markets survive model renames.** Outcome labels now stay in sync with model
+  display names, so a renamed model (e.g. GPT-5.6 Pro → GPT-5.6 Sol Pro) can still be matched
+  when its market settles.
+- **Sentiment no longer leaks between similarly named models.** A score for "Grok 4" previously
+  also landed on Grok 4.5 and Grok 4.3; matching is now exact.
+- **Execution prices include the sentiment tilt**, so the price you trade at matches the board.
+- **Empty-pool settlements refund stakes** instead of burning them (markets and Arena).
+
+### Merged
+- **Market-integrity hardening.** Cent-exact parimutuel payouts, self-dealing protection (your own
+  vote can't move your own execution price), admin-by-user-ID in production, graceful shutdown,
+  CI on every pull request, and Arena matchups restricted to active models.
+
 ## v1.5.1 — Worth re-grounded to real-world data (2026-06-21)
 
 ### Improvements
