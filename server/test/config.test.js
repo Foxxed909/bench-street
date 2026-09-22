@@ -33,6 +33,7 @@ describe('admin identity configuration', () => {
         ...process.env,
         NODE_ENV: 'production',
         JWT_SECRET: 'test-only-strong-secret',
+        JWT_REFRESH_SECRET: 'test-only-refresh-secret',
         ADMIN_USER_IDS: '7,42',
         ADMIN_USERNAMES: 'admin'
       }

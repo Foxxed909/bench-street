@@ -3,9 +3,11 @@ import express from 'express'
 import cors from 'cors'
 import http from 'node:http'
 import { Server } from 'socket.io'
+import cookieParser from 'cookie-parser'
 
 import db from './db.js'
 import { rateLimit } from './ratelimit.js'
+import { csrfProtection, csrfTokenMiddleware } from './csrf.js'
 import { seedDatabase } from './seed.js'
 import { reconcileAdminFlags } from './admins.js'
 import { startPricing } from './pricing.js'
@@ -85,8 +87,14 @@ const app = express()
 // Behind Railway's proxy: trust the first hop so req.ip reflects the real client
 // (X-Forwarded-For) — without this the rate limiter would bucket everyone together.
 app.set('trust proxy', 1)
-app.use(cors({ origin: ORIGIN }))
+app.use(cors({ origin: ORIGIN, credentials: true }))
+app.use(cookieParser())
 app.use(express.json({ limit: '100kb' }))
+app.use(express.urlencoded({ extended: true }))
+
+// Security middleware
+app.use(csrfTokenMiddleware)
+app.use('/api', csrfProtection)
 
 // Broad abuse cap on the whole API, plus a tight limit on auth (brute-force / spam).
 app.use('/api', rateLimit({ windowMs: 60_000, max: 300, key: 'api' }))

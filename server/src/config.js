@@ -3,6 +3,11 @@
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
+// JWT Configuration
+export const JWT_ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m'  // 15 minutes for access tokens
+export const JWT_REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d'  // 7 days for refresh tokens
+export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-change-me'
+
 // Production admins are pinned to immutable database user IDs. A public username is
 // not an identity boundary: anyone can register a desired name before its owner and
 // wait for a username allowlist to promote it on the next deploy.
@@ -41,6 +46,19 @@ if (IS_PRODUCTION && JWT_SECRET === DEV_SECRET) {
   throw new Error(
     'JWT_SECRET must be set to a strong, unique value in production (the dev default is forgeable).'
   )
+}
+
+// Validate JWT configuration
+// Only validate in production - allow defaults in development
+if (IS_PRODUCTION && JWT_REFRESH_SECRET === 'refresh-secret-change-me') {
+  throw new Error(
+    'JWT_REFRESH_SECRET must be set to a strong, unique value in production.'
+  )
+}
+
+// Warn in development about using default secrets
+if (!IS_PRODUCTION && JWT_REFRESH_SECRET === 'refresh-secret-change-me') {
+  console.warn('[config] JWT_REFRESH_SECRET is using development default. Set a strong secret for production.')
 }
 
 const configuredBalance = Number(process.env.STARTING_BALANCE ?? 100000)

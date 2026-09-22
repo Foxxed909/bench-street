@@ -1,25 +1,31 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../store/auth.jsx'
 
 export default function Login() {
-  const { user, login, signup } = useAuth()
-  const [mode, setMode] = useState('signup')
+  const { user, login, error, clearError } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const nav = useNavigate()
 
+  // Sync global error state with local error state
+  useEffect(() => {
+    if (error) {
+      setErr(error)
+    }
+  }, [error])
+
   if (user) return <Navigate to="/" replace />
 
   async function submit(e) {
     e.preventDefault()
     setErr('')
+    clearError()
     setBusy(true)
     try {
-      if (mode === 'login') await login(username.trim(), password)
-      else await signup(username.trim(), password)
+      await login(username.trim(), password)
       nav('/')
     } catch (e) {
       setErr(e.message)
@@ -44,12 +50,10 @@ export default function Login() {
       </div>
       <div className="card p-6">
         <h1 className="mb-1 font-display text-xl font-bold text-white">
-          {mode === 'login' ? 'Welcome back' : 'Open an account'}
+          Welcome back
         </h1>
         <p className="mb-5 text-sm text-slate-400">
-          {mode === 'login'
-            ? 'Sign in to trade and bet.'
-            : 'Start with $100,000 in play credits — no real money.'}
+          Sign in to trade and bet.
         </p>
       <form onSubmit={submit} className="space-y-3">
         <input
@@ -58,6 +62,7 @@ export default function Login() {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoFocus
+          disabled={busy}
         />
         <input
           className="input"
@@ -65,28 +70,17 @@ export default function Login() {
           placeholder="Password (min 6 chars)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          disabled={busy}
         />
         {err && <p className="text-down text-sm">{err}</p>}
         <button disabled={busy} className="btn-primary w-full">
-          {busy ? '…' : mode === 'login' ? 'Sign in' : 'Create account'}
+          {busy ? '\u2026' : 'Sign in'}
         </button>
       </form>
-        <button
-          onClick={() => {
-            setErr('')
-            setMode(mode === 'login' ? 'signup' : 'login')
-          }}
-          className="mt-4 text-sm text-slate-400 transition hover:text-white"
-        >
-          {mode === 'login' ? 'No account? Sign up' : 'Have an account? Sign in'}
-        </button>
       </div>
-      {mode === 'signup' && (
-        <p className="mt-4 text-center text-xs text-slate-600">
-          Play money only — no real funds, no card, no spam. You start with{' '}
-          <span className="num text-slate-500">$100,000</span> in credits.
-        </p>
-      )}
+      <p className="mt-4 text-center text-xs text-slate-600">
+        Play money only \u2014 no real funds, no card, no spam.
+      </p>
     </div>
   )
 }

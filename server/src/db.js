@@ -20,6 +20,7 @@ db.exec(`
     email         TEXT UNIQUE,
     password_hash TEXT NOT NULL,
     cash          REAL NOT NULL,
+    refresh_token_hash TEXT,
     created_at    TEXT NOT NULL
   );
 
