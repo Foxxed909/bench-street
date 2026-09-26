@@ -1,0 +1,46 @@
+# Fly.io config for Bench Street API
+# Docs: https://fly.io/docs/
+#
+# Quick start (from server/ directory):
+#   fly auth login
+#   fly launch --no-deploy --copy-config --name bench-street-api
+#   fly volumes create data --size 1 --region iad
+#   fly secrets set JWT_SECRET="$(openssl rand -hex 32)" JWT_REFRESH_SECRET="$(openssl rand -hex 32)" CLIENT_ORIGIN="https://benchstreet.vercel.app,https://client-xi-orcin.vercel.app"
+#   fly deploy
+#
+# Then set Vercel env: VITE_API_URL=https://bench-street-api.fly.dev
+
+app = "bench-street-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  DATA_DIR = "/data"
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/health"
+
+[[mounts]]
+  source = "data"
+  destination = "/data"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
