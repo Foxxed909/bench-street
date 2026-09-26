@@ -1,16 +1,16 @@
-# Alternative Render blueprint for the Bench Street backend.
+# Bench Street API — Render Blueprint
 #
-# Canonical production deployment:
-#   Frontend: https://benchstreet.vercel.app
-#   API:      https://bench-street-api-production.up.railway.app
+# Deploy: Render Dashboard → New → Blueprint → select this repo
+# Or: https://dashboard.render.com/select-repo?type=blueprint
 #
-# Use this blueprint only when intentionally moving the backend away from Railway.
-# Update Vercel's VITE_API_URL after the replacement Render health endpoint and
-# Socket.io connection have both been verified.
+# After deploy, set Vercel env:
+#   VITE_API_URL=https://<your-service>.onrender.com
 #
-# Free-tier caveats:
-#   - The service can sleep when idle and cold-start on the next request.
-#   - Without a persistent disk, SQLite data is ephemeral.
+# Notes:
+# - Free plan sleeps after ~15 min idle (cold starts). Use Starter for always-on.
+# - Persistent disk is required for SQLite. Free plan has no disk → data is lost on restart.
+#   Starter (or higher) includes disk support.
+
 services:
   - type: web
     name: bench-street-api
@@ -23,15 +23,26 @@ services:
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: '22.14.0'
+        value: "22"
       - key: NODE_ENV
         value: production
+      - key: DATA_DIR
+        value: /data
       - key: JWT_SECRET
         generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
       - key: CLIENT_ORIGIN
-        value: https://benchstreet.vercel.app
-      # Configure these explicitly before using Render for production:
+        value: https://benchstreet.vercel.app,https://client-xi-orcin.vercel.app
+      - key: STARTING_BALANCE
+        value: "100000"
+      # Optional — set after first login if you want admins:
       # - key: ADMIN_USER_IDS
-      #   value: '<numeric user IDs>'
-      # - key: DATA_DIR
-      #   value: /var/data
+      #   value: "1"
+
+# Uncomment + switch plan to "starter" (or higher) when you want persistent data + no sleep:
+#    plan: starter
+#    disk:
+#      name: data
+#      mountPath: /data
+#      sizeGB: 1
