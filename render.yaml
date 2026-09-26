@@ -1,15 +1,13 @@
 # Bench Street API — Render Blueprint
 #
 # Deploy: Render Dashboard → New → Blueprint → select this repo
-# Or: https://dashboard.render.com/select-repo?type=blueprint
-#
 # After deploy, set Vercel env:
-#   VITE_API_URL=https://<your-service>.onrender.com
+#   VITE_API_URL=https://bench-street-api.onrender.com
 #
-# Notes:
-# - Free plan sleeps after ~15 min idle (cold starts). Use Starter for always-on.
-# - Persistent disk is required for SQLite. Free plan has no disk → data is lost on restart.
-#   Starter (or higher) includes disk support.
+# Free plan notes:
+# - Sleeps after ~15 min idle (cold starts).
+# - No persistent disk → SQLite is wiped on every restart/deploy.
+#   For real persistence, upgrade to Starter and enable the disk block below.
 
 services:
   - type: web
@@ -26,8 +24,10 @@ services:
         value: "22"
       - key: NODE_ENV
         value: production
+      # Free plan has no mounted disk. Use a path inside the app (writable).
+      # When you upgrade to Starter, change this to /data and uncomment the disk block.
       - key: DATA_DIR
-        value: /data
+        value: "./data"
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -36,11 +36,9 @@ services:
         value: https://benchstreet.vercel.app,https://client-xi-orcin.vercel.app
       - key: STARTING_BALANCE
         value: "100000"
-      # Optional — set after first login if you want admins:
-      # - key: ADMIN_USER_IDS
-      #   value: "1"
 
-# Uncomment + switch plan to "starter" (or higher) when you want persistent data + no sleep:
+# --- When you upgrade to Starter (or higher) for always-on + persistent SQLite ---
+# Change plan to "starter", set DATA_DIR to "/data", and uncomment:
 #    plan: starter
 #    disk:
 #      name: data
