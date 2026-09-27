@@ -4,8 +4,8 @@ import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-// DATA_DIR lets the deploy point the SQLite file at a persistent volume (Railway
-// mounts one at an absolute path). Falls back to a local ./data dir for dev.
+// DATA_DIR lets the deploy point the SQLite file at a persistent volume.
+// Falls back to a local ./data dir for development.
 const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data')
 fs.mkdirSync(dataDir, { recursive: true })
 
