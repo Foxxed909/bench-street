@@ -3,7 +3,9 @@ import db from '../db.js'
 import {
   verifyLogin,
   signToken,
-  generateRefreshToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  verifyRefreshTokenHash,
   hashPassword,
   publicUser,
   optionalAuth
@@ -31,7 +33,7 @@ router.post('/login', (req, res) => {
   try {
     const user = verifyLogin(v)
     if (!user) return res.status(401).json({ error: 'invalid credentials' })
-    const refreshToken = generateRefreshToken()
+    const refreshToken = signRefreshToken(user.id)
     const refreshTokenHash = hashPassword(refreshToken)
     db.prepare('UPDATE users SET refresh_token_hash = ? WHERE id = ?')
       .run(refreshTokenHash, user.id)
@@ -44,7 +46,7 @@ router.post('/login', (req, res) => {
 
 // Refresh token endpoint
 router.post('/refresh', (req, res) => {
-  const refreshToken = req.body.refreshToken
+  const refreshToken = req.body?.refreshToken
   if (!refreshToken) {
     return res.status(400).json({ error: 'refreshToken is required' })
   }
@@ -60,13 +62,12 @@ router.post('/refresh', (req, res) => {
       return res.status(401).json({ error: 'User not found or no refresh token' })
     }
     
-    const tokenHash = hashPassword(refreshToken)
-    if (tokenHash !== user.refresh_token_hash) {
+    if (!verifyRefreshTokenHash(refreshToken, user.refresh_token_hash)) {
       return res.status(401).json({ error: 'Invalid refresh token' })
     }
     
     const newAccessToken = signToken(user)
-    const newRefreshToken = generateRefreshToken()
+    const newRefreshToken = signRefreshToken(user.id)
     const newRefreshTokenHash = hashPassword(newRefreshToken)
     
     db.prepare('UPDATE users SET refresh_token_hash = ? WHERE id = ?')
