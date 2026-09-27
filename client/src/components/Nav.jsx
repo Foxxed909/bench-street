@@ -9,7 +9,8 @@ const LINKS = [
   ['/', 'Floor', true],
   ['/predictions', 'Predictions', false],
   ['/arena', 'Arena', false],
-  ['/leaderboard', 'Leaderboard', false]
+  ['/leaderboard', 'Leaderboard', false],
+  ['/internal', 'Internal', false]
 ]
 
 export default function Nav() {
@@ -73,7 +74,7 @@ export default function Nav() {
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-panel2 text-[11px] font-semibold text-slate-300">
                   {user.username.slice(0, 1).toUpperCase()}
                 </span>
-                {user.isAdmin && <span className="pill bg-accent/15 text-accent">admin</span>}
+                {user.isAdmin && <span className="pill bg-accent/15 text-accent">local</span>}
               </div>
               <button
                 onClick={doLogout}

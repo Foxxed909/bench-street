@@ -1,9 +1,42 @@
-import { io } from 'socket.io-client'
+const handlers = new Map()
 
-// Production: set VITE_API_URL to the backend origin. In dev it's undefined →
-// same-origin connection, which Vite proxies to the Express server on :4000.
-// .trim() strips any stray whitespace/BOM the env var may carry (U+FEFF is
-// whitespace per the JS spec) — a BOM here makes socket.io misparse the host.
-const API_BASE = (import.meta.env.VITE_API_URL || '').trim() || undefined
+function bucket(event) {
+  if (!handlers.has(event)) handlers.set(event, new Set())
+  return handlers.get(event)
+}
 
-export const socket = io(API_BASE, { autoConnect: true, transports: ['websocket', 'polling'] })
+function dispatch(event, payload) {
+  for (const fn of bucket(event)) {
+    try {
+      fn(payload)
+    } catch {
+      // A bad subscriber should not break the local event stream.
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('benchstreet:socket', (e) => {
+    const event = e.detail?.event
+    if (event) dispatch(event, e.detail?.payload)
+  })
+}
+
+export const socket = {
+  connected: true,
+  on(event, fn) {
+    bucket(event).add(fn)
+    return this
+  },
+  off(event, fn) {
+    bucket(event).delete(fn)
+    return this
+  },
+  emit(event, payload) {
+    // Existing components emit request-snapshot on connect. Internal mode keeps
+    // state synchronised through the API/state event, so this is intentionally
+    // a lightweight local event.
+    dispatch(event, payload)
+    return this
+  }
+}
