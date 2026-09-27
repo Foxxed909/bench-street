@@ -8,6 +8,7 @@ import Predictions from './pages/Predictions.jsx'
 import Arena from './pages/Arena.jsx'
 import Leaderboard from './pages/Leaderboard.jsx'
 import Login from './pages/Login.jsx'
+import Internal from './pages/Internal.jsx'
 import { useAuth } from './store/auth.jsx'
 
 function Protected({ children }) {
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/predictions" element={<Predictions />} />
           <Route path="/arena" element={<Arena />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/internal" element={<Internal />} />
           <Route
             path="/portfolio"
             element={
@@ -42,8 +44,7 @@ export default function App() {
         </Routes>
       </main>
       <footer className="max-w-6xl mx-auto px-4 py-8 text-xs text-slate-600 border-t border-edge/50 mt-6">
-        Bench Street · play-money AI model exchange · prices open from each model's benchmark
-        standing and move on community votes. Not investment advice.
+        Bench Street Internal · play-money AI model exchange · browser-local engine · no external backend.\n        Prices open from benchmark standing and move on votes. Not investment advice.
       </footer>
     </div>
   )
