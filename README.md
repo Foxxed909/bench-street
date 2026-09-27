@@ -10,8 +10,8 @@ predictions about AI events, and back randomized Elo-weighted matchups in the Ar
 ## Production URLs
 
 - **Canonical app:** <https://benchstreet.vercel.app>
-- **API:** <https://bench-street-api-production.up.railway.app>
-- **API health:** <https://bench-street-api-production.up.railway.app/api/health>
+- **API:** <https://bench-street-api.onrender.com>
+- **API health:** <https://bench-street-api.onrender.com/api/health>
 - **Repository:** <https://github.com/Foxxed909/bench-street>
 - **Deployment details:** [`DEPLOY.md`](./DEPLOY.md)
 
@@ -68,7 +68,7 @@ should not be assumed to come from a live provider.
 
 - **Client:** React 18, Vite, Tailwind CSS, Recharts, Socket.io client
 - **Server:** Node.js, Express, better-sqlite3, Socket.io, JWT, bcrypt
-- **Production:** Vercel frontend, Railway backend, Railway persistent volume for SQLite
+- **Production:** Vercel frontend, Render backend; persistent SQLite requires a paid Render disk (or another persistent store)
 
 ## Quickstart
 
@@ -78,8 +78,8 @@ npm run dev
 ```
 
 Open <http://localhost:5173>. The API runs on <http://localhost:4000>; Vite proxies `/api` and
-`/socket.io` during local development. New accounts start with `$100,000` in virtual credits unless
-`STARTING_BALANCE` is configured.
+`/socket.io` during local development. Authentication is currently login-only; a fresh database
+contains no user accounts unless you provision them separately.
 
 ## Tests and build
 

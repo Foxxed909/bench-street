@@ -119,7 +119,7 @@ async function handleTokenRefresh(originalRequest) {
 async function request(path, opts = {}) {
   const headers = { Accept: 'application/json', ...(opts.headers || {}) }
   // Bodyless public reads do not need Content-Type. Setting it on every GET creates
-  // a needless CORS preflight against the separately hosted Railway API.
+  // a needless CORS preflight against the separately hosted production API.
   if (opts.body != null && !headers['Content-Type'] && !headers['content-type']) {
     headers['Content-Type'] = 'application/json'
   }

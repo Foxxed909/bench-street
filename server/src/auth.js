@@ -13,6 +13,17 @@ export function hashPassword(pw) {
   return bcrypt.hashSync(pw, 12)  // Increased from 10 to 12 for better security
 }
 
+export function hashRefreshToken(token) {
+  if (typeof token !== 'string' || !token) return null
+  return crypto.createHash('sha256').update(token).digest('hex')
+}
+
+export function verifyRefreshTokenHash(token, hash) {
+  const actual = hashRefreshToken(token)
+  if (!actual || typeof hash !== 'string' || !/^[a-f0-9]{64}$/i.test(hash)) return false
+  return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(hash, 'hex'))
+}
+
 export function signToken(user) {
   return jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, {
     expiresIn: JWT_ACCESS_EXPIRY  // Changed from 30d to 15m (configurable)
@@ -35,16 +46,14 @@ export function verifyRefreshToken(token) {
 
 export function createUser({ username, email, password }) {
   const now = new Date().toISOString()
-  const refreshToken = generateRefreshToken()
-  const refreshTokenHash = hashPassword(refreshToken)
   // Public signup can never grant admin rights. Production admin flags are
   // reconciled from immutable configured user IDs at boot.
   const info = db
     .prepare(
       `INSERT INTO users (username, email, password_hash, cash, is_admin, refresh_token_hash, created_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?)`
+       VALUES (?, ?, ?, ?, 0, NULL, ?)`
     )
-    .run(username, email || null, hashPassword(password), STARTING_BALANCE, refreshTokenHash, now)
+    .run(username, email || null, hashPassword(password), STARTING_BALANCE, now)
   return db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid)
 }
 
@@ -122,16 +131,15 @@ export function refreshAuth(req, res, next) {
     return res.status(401).json({ error: 'User not found or no refresh token' })
   }
   
-  // Verify the refresh token hash matches
-  const tokenHash = hashPassword(refreshToken)
-  if (tokenHash !== user.refresh_token_hash) {
+  // Verify the refresh token hash matches the stored revocation record.
+  if (!verifyRefreshTokenHash(refreshToken, user.refresh_token_hash)) {
     return res.status(401).json({ error: 'Invalid refresh token' })
   }
   
   // Issue new tokens
   const newAccessToken = signToken(user)
-  const newRefreshToken = generateRefreshToken()
-  const newRefreshTokenHash = hashPassword(newRefreshToken)
+  const newRefreshToken = signRefreshToken(user.id)
+  const newRefreshTokenHash = hashRefreshToken(newRefreshToken)
   
   // Update the refresh token in the database
   db.prepare('UPDATE users SET refresh_token_hash = ? WHERE id = ?')

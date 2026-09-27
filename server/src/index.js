@@ -7,7 +7,6 @@ import cookieParser from 'cookie-parser'
 
 import db from './db.js'
 import { rateLimit } from './ratelimit.js'
-import { csrfProtection, csrfTokenMiddleware } from './csrf.js'
 import { seedDatabase } from './seed.js'
 import { reconcileAdminFlags } from './admins.js'
 import { startPricing } from './pricing.js'
@@ -92,9 +91,9 @@ app.use(cookieParser())
 app.use(express.json({ limit: '100kb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// Security middleware
-app.use(csrfTokenMiddleware)
-app.use('/api', csrfProtection)
+// Authentication is carried in explicit Bearer/refresh tokens, not ambient auth cookies.
+// Enforcing CSRF here made every state-changing API request fail because the client has no
+// CSRF token negotiation flow. CORS + explicit token auth remain the request boundary.
 
 // Broad abuse cap on the whole API, plus a tight limit on auth (brute-force / spam).
 app.use('/api', rateLimit({ windowMs: 60_000, max: 300, key: 'api' }))
