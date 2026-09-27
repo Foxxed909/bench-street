@@ -13,13 +13,15 @@ export function hashPassword(pw) {
   return bcrypt.hashSync(pw, 12)  // Increased from 10 to 12 for better security
 }
 
+export function hashRefreshToken(token) {
+  if (typeof token !== 'string' || !token) return null
+  return crypto.createHash('sha256').update(token).digest('hex')
+}
+
 export function verifyRefreshTokenHash(token, hash) {
-  if (typeof token !== 'string' || !token || typeof hash !== 'string' || !hash) return false
-  try {
-    return bcrypt.compareSync(token, hash)
-  } catch {
-    return false
-  }
+  const actual = hashRefreshToken(token)
+  if (!actual || typeof hash !== 'string' || !/^[a-f0-9]{64}$/i.test(hash)) return false
+  return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(hash, 'hex'))
 }
 
 export function signToken(user) {
@@ -44,16 +46,14 @@ export function verifyRefreshToken(token) {
 
 export function createUser({ username, email, password }) {
   const now = new Date().toISOString()
-  const refreshToken = generateRefreshToken()
-  const refreshTokenHash = hashPassword(refreshToken)
   // Public signup can never grant admin rights. Production admin flags are
   // reconciled from immutable configured user IDs at boot.
   const info = db
     .prepare(
       `INSERT INTO users (username, email, password_hash, cash, is_admin, refresh_token_hash, created_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?)`
+       VALUES (?, ?, ?, ?, 0, NULL, ?)`
     )
-    .run(username, email || null, hashPassword(password), STARTING_BALANCE, refreshTokenHash, now)
+    .run(username, email || null, hashPassword(password), STARTING_BALANCE, now)
   return db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid)
 }
 
@@ -139,7 +139,7 @@ export function refreshAuth(req, res, next) {
   // Issue new tokens
   const newAccessToken = signToken(user)
   const newRefreshToken = signRefreshToken(user.id)
-  const newRefreshTokenHash = hashPassword(newRefreshToken)
+  const newRefreshTokenHash = hashRefreshToken(newRefreshToken)
   
   // Update the refresh token in the database
   db.prepare('UPDATE users SET refresh_token_hash = ? WHERE id = ?')
