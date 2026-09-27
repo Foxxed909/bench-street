@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  hashPassword,
+  hashRefreshToken,
   signRefreshToken,
   verifyRefreshToken,
   verifyRefreshTokenHash
@@ -14,9 +14,9 @@ describe('refresh-token lifecycle', () => {
     expect(payload?.userId).toBe(42)
   })
 
-  it('matches the stored bcrypt hash without re-hashing and comparing strings', () => {
+  it('matches the stored refresh-token digest and rejects tampering', () => {
     const token = signRefreshToken(7)
-    const hash = hashPassword(token)
+    const hash = hashRefreshToken(token)
 
     expect(verifyRefreshTokenHash(token, hash)).toBe(true)
     expect(verifyRefreshTokenHash(token + 'tampered', hash)).toBe(false)
