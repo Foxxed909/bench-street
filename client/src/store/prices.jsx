@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { socket } from '../lib/socket.js'
+import { api } from '../lib/api.js'
 
 const PricesCtx = createContext({ prices: {}, history: {}, likes: {}, dislikes: {} })
 const MAX_POINTS = 48
@@ -11,7 +11,10 @@ export function PricesProvider({ children }) {
   const [dislikes, setDislikes] = useState({})
 
   useEffect(() => {
+    let cancelled = false
+
     function apply(models) {
+      if (cancelled) return
       setPrices((prev) => {
         const next = { ...prev }
         for (const m of models) next[m.id] = m.price
@@ -27,28 +30,34 @@ export function PricesProvider({ children }) {
       })
       setLikes((prev) => {
         const next = { ...prev }
-        for (const m of models) if (m.likes != null) next[m.id] = m.likes
+        for (const m of models) next[m.id] = m.likes
         return next
       })
       setDislikes((prev) => {
         const next = { ...prev }
-        for (const m of models) if (m.dislikes != null) next[m.id] = m.dislikes
+        for (const m of models) next[m.id] = m.dislikes
         return next
       })
     }
-    const onPrices = (p) => apply(p.models)
-    const onSnapshot = (s) => apply(s.models)
-    // Ask for a fresh snapshot on every (re)connect — and immediately if the socket
-    // already connected before this effect mounted — so the board is never empty.
-    const onConnect = () => socket.emit('request-snapshot')
-    socket.on('prices', onPrices)
-    socket.on('snapshot', onSnapshot)
-    socket.on('connect', onConnect)
-    if (socket.connected) socket.emit('request-snapshot')
+
+    async function load() {
+      try {
+        const d = await api.get('/models')
+        apply(d.models || [])
+      } catch {
+        // Keep the last good board if browser storage is temporarily unavailable.
+      }
+    }
+
+    const onState = () => load()
+    load()
+    const poll = setInterval(load, 15000)
+    window.addEventListener('benchstreet:state', onState)
+
     return () => {
-      socket.off('prices', onPrices)
-      socket.off('snapshot', onSnapshot)
-      socket.off('connect', onConnect)
+      cancelled = true
+      clearInterval(poll)
+      window.removeEventListener('benchstreet:state', onState)
     }
   }, [])
 
