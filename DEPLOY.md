@@ -40,6 +40,10 @@ STARTING_BALANCE=100000
 On the free plan there is no persistent disk — SQLite is wiped on sleep/restart.
 Upgrade to Starter and mount a disk at `/data` for permanent data.
 
+> **Authentication warning:** the current product is login-only. A fresh SQLite database has no
+> users, so an ephemeral free-plan restart can leave nobody able to sign in. For production, use
+> persistent storage and preserve/provision the user database before relying on login-only auth.
+
 ### Vercel frontend (required)
 
 ```text
