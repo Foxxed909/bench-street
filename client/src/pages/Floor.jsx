@@ -245,7 +245,7 @@ export default function Floor() {
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tightest text-white">The Floor</h1>
           <div className="flex items-center gap-3 mt-1">
-            <p className="text-sm text-slate-400">{models.length} AI models · live exchange</p>
+            <p className="text-sm text-slate-400">{models.length} AI models · internal exchange</p>
             {signals?.updatedAt && (
               <span className="flex items-center gap-1.5 text-xs text-slate-400">
                 <span className="live-dot" />
@@ -455,7 +455,7 @@ function IntroBanner({ user }) {
           </p>
           {!user && (
             <Link to="/login" className="btn-primary mt-3 inline-block">
-              Sign up — start with $100k
+              Open internal desk — start with $100k
             </Link>
           )}
         </div>
