@@ -6,7 +6,7 @@ import {
   signRefreshToken,
   verifyRefreshToken,
   verifyRefreshTokenHash,
-  hashPassword,
+  hashRefreshToken,
   publicUser,
   optionalAuth
 } from '../auth.js'
@@ -34,7 +34,7 @@ router.post('/login', (req, res) => {
     const user = verifyLogin(v)
     if (!user) return res.status(401).json({ error: 'invalid credentials' })
     const refreshToken = signRefreshToken(user.id)
-    const refreshTokenHash = hashPassword(refreshToken)
+    const refreshTokenHash = hashRefreshToken(refreshToken)
     db.prepare('UPDATE users SET refresh_token_hash = ? WHERE id = ?')
       .run(refreshTokenHash, user.id)
     res.json({ token: signToken(user), refreshToken, user: publicUser(user) })
@@ -68,7 +68,7 @@ router.post('/refresh', (req, res) => {
     
     const newAccessToken = signToken(user)
     const newRefreshToken = signRefreshToken(user.id)
-    const newRefreshTokenHash = hashPassword(newRefreshToken)
+    const newRefreshTokenHash = hashRefreshToken(newRefreshToken)
     
     db.prepare('UPDATE users SET refresh_token_hash = ? WHERE id = ?')
       .run(newRefreshTokenHash, user.id)
