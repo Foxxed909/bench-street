@@ -13,6 +13,15 @@ export function hashPassword(pw) {
   return bcrypt.hashSync(pw, 12)  // Increased from 10 to 12 for better security
 }
 
+export function verifyRefreshTokenHash(token, hash) {
+  if (typeof token !== 'string' || !token || typeof hash !== 'string' || !hash) return false
+  try {
+    return bcrypt.compareSync(token, hash)
+  } catch {
+    return false
+  }
+}
+
 export function signToken(user) {
   return jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, {
     expiresIn: JWT_ACCESS_EXPIRY  // Changed from 30d to 15m (configurable)
@@ -122,15 +131,14 @@ export function refreshAuth(req, res, next) {
     return res.status(401).json({ error: 'User not found or no refresh token' })
   }
   
-  // Verify the refresh token hash matches
-  const tokenHash = hashPassword(refreshToken)
-  if (tokenHash !== user.refresh_token_hash) {
+  // Verify the refresh token hash matches the stored revocation record.
+  if (!verifyRefreshTokenHash(refreshToken, user.refresh_token_hash)) {
     return res.status(401).json({ error: 'Invalid refresh token' })
   }
   
   // Issue new tokens
   const newAccessToken = signToken(user)
-  const newRefreshToken = generateRefreshToken()
+  const newRefreshToken = signRefreshToken(user.id)
   const newRefreshTokenHash = hashPassword(newRefreshToken)
   
   // Update the refresh token in the database
